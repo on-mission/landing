@@ -35,8 +35,28 @@ Two capabilities build on the same dispatch mechanism:
 
 ## Install
 
-Landing isn't published to a package registry or as a release binary yet.
-From a checkout of this repository:
+With a Go toolchain:
+
+```
+go install github.com/on-mission/landing/cmd/landing@latest
+```
+
+This installs to `$(go env GOPATH)/bin`, which must be on your `PATH`. It
+resolves through the Go module proxy; the binary it builds is not stamped
+with a released version or commit (`landing --version` reports `dev`) since
+`go install` doesn't run this repo's release build. No tagged release exists
+yet — `@latest` currently resolves to a pseudo-version off the newest commit
+on `main` rather than a tagged release; once a `v*` tag exists, `@latest`
+will follow tags instead.
+
+Without a Go toolchain, download a prebuilt binary from the
+[Releases](../../releases) page for macOS, Linux, or Windows, verify it
+against the accompanying `checksums.txt`, and put it on your `PATH`. Release
+notes on each artifact state which platforms were actually executed by CI
+and which were only cross-compiled — read that before trusting one you
+haven't tested yourself.
+
+To build from a checkout instead:
 
 ```
 go build -o landing ./cmd/landing
@@ -147,10 +167,6 @@ Landing cannot grant that trust on your behalf — each harness must be
 configured to accept it. Without installed hooks, an agent can still read its
 own inbox and history (`landing comms --inbox`, `landing comms --history`),
 and threads dispatched through Landing still register.
-
-## Known work
-
-See [TODO.md](TODO.md) for what's still open before a public release.
 
 ## Contributing
 

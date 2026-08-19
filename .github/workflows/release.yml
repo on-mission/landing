@@ -1,0 +1,159 @@
+name: Release
+
+# Tag push only. A tag can only be created by someone with write access to
+# this repository, so a fork's pull request never runs this workflow, and
+# never runs inside the trust boundary of the release job's token below.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  # Pinned to an exact patch, not go.mod's floating "go 1.26" directive,
+  # so that reconstructing a given tag's build months from now resolves
+  # the same toolchain instead of whatever 1.26.x is newest that day.
+  # Bumping this is a deliberate one-line edit, not silent drift.
+  GO_VERSION: "1.26.7"
+
+jobs:
+  build:
+    name: build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # native: true means this runner's own architecture matches the
+          # target, so the built binary can actually be executed here as
+          # part of this job (see the smoke-test step). native: false means
+          # the binary is cross-compiled and this job never runs it — the
+          # job only proves it compiles, not that it works.
+          - { goos: linux, goarch: amd64, runner: ubuntu-latest, native: true }
+          - { goos: linux, goarch: arm64, runner: ubuntu-24.04-arm, native: true }
+          - { goos: darwin, goarch: arm64, runner: macos-latest, native: true }
+          - { goos: darwin, goarch: amd64, runner: macos-latest, native: false }
+          - { goos: windows, goarch: amd64, runner: windows-latest, native: true }
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Report toolchain
+        shell: bash
+        run: go version
+
+      - name: Build
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          commit="${GITHUB_SHA}"
+          ext=""
+          if [ "${GOOS}" = "windows" ]; then ext=".exe"; fi
+          name="landing-${version}-${GOOS}-${GOARCH}${ext}"
+          mkdir -p dist
+          go build -trimpath \
+            -ldflags "-s -w -X github.com/on-mission/landing/internal/cli.version=${version} -X github.com/on-mission/landing/internal/cli.commit=${commit}" \
+            -o "dist/${name}" ./cmd/landing
+          echo "artifact_name=${name}" >> "$GITHUB_ENV"
+
+      # Proves the binary starts and reports the expected version/commit on
+      # this OS and architecture. It does NOT run this repo's test suite —
+      # that only happens in ci.yml, and only for the OS/arch pairs in its
+      # own matrix. A passing smoke test here is evidence the binary isn't
+      # dead on arrival; it is not evidence the file-locking and subprocess
+      # behavior in internal/comms works correctly on this platform.
+      - name: Smoke test (native targets only)
+        if: matrix.native
+        shell: bash
+        run: |
+          set -euo pipefail
+          bin="dist/${artifact_name}"
+          chmod +x "$bin"
+          out="$("$bin" --version)"
+          echo "landing --version: ${out}"
+          case "${out}" in
+            *"${GITHUB_REF_NAME}"*"${GITHUB_SHA}"*) ;;
+            *) echo "expected version ${GITHUB_REF_NAME} and commit ${GITHUB_SHA} in output, got: ${out}" >&2; exit 1 ;;
+          esac
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: landing-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The only job in this workflow with write access to anything. Every
+    # build job above runs with contents: read and no other permission;
+    # this is where that changes, and only here.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 1
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: landing-*
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          set -euo pipefail
+          sha256sum -- * > checksums.txt
+          cat checksums.txt
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          notes_file="$(mktemp)"
+          cat > "$notes_file" <<EOF
+          Built from commit ${GITHUB_SHA}. \`landing --version\` on every
+          artifact below reports this exact tag and commit.
+
+          Executed as part of this build (\`landing --version\` ran on its
+          native runner): linux/amd64, linux/arm64, darwin/arm64 (Apple
+          Silicon), windows/amd64. linux/amd64, darwin/arm64, and
+          windows/amd64 also run this repo's full race-detected test suite
+          on every push and pull request in ci.yml; linux/arm64 does not yet
+          have that coverage anywhere, only this release build's version
+          smoke test.
+
+          Cross-compiled only, never executed by any CI job: darwin/amd64
+          (Intel Mac). GitHub does not currently offer a free hosted Intel
+          macOS runner, so this artifact is unverified beyond "it compiles."
+
+          Verify a download against checksums.txt (SHA-256):
+
+              shasum -a 256 -c checksums.txt      # macOS / Linux
+              CertUtil -hashfile <file> SHA256     # Windows
+          EOF
+          if gh release view "$tag" --json id >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber
+          else
+            gh release create "$tag" dist/* --title "$tag" --notes-file "$notes_file"
+          fi

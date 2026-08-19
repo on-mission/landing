@@ -13,8 +13,17 @@ import (
 	"github.com/on-mission/landing/internal/harness"
 )
 
+// version and commit are set at build time via -ldflags
+// "-X github.com/on-mission/landing/internal/cli.version=... -X
+// github.com/on-mission/landing/internal/cli.commit=...". Builds that skip
+// that flag (go run, go install without ldflags, an unreleased checkout)
+// keep these honest defaults rather than a stale hardcoded version.
+var (
+	version = "dev"
+	commit  = "unknown"
+)
+
 const (
-	version                = "1.0.0"
 	defaultDispatchTimeout = 30 * time.Minute
 	defaultReplyTimeout    = 10 * time.Minute
 	progressInterval       = 30 * time.Second
@@ -349,7 +358,7 @@ func Run(ctx context.Context, inputs Inputs) (int, error) {
 		return exitUsage, err
 	}
 	if values.Version {
-		if _, err := fmt.Fprintln(inputs.Stdout, version); err != nil {
+		if _, err := fmt.Fprintf(inputs.Stdout, "%s (%s)\n", version, commit); err != nil {
 			return exitFailed, err
 		}
 		return exitOK, nil
