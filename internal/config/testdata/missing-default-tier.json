@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "defaultTier": "absent",
+  "tiers": {
+    "reviewer": {
+      "routes": [{ "harness": "codex" }]
+    }
+  }
+}

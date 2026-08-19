@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "tiers": {
+    "reviewer": {
+      "routes": [{ "harness": "codex" }]
+    }
+  }
+}

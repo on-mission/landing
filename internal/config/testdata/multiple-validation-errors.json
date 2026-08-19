@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "tiers": {
+    "": {
+      "routes": []
+    },
+    "bad": {
+      "routes": [
+        { "harness": "unknown-one" },
+        { "harness": "unknown-two" }
+      ]
+    }
+  }
+}

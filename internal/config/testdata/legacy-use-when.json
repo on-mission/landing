@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "tiers": {
+    "custom": {
+      "useWhen": "Legacy tier prose.",
+      "routes": [{ "harness": "codex" }]
+    }
+  }
+}

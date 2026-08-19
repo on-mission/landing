@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "defaultTier": "reviewer",
+  "tiers": {
+    "reviewer": {
+      "description": "Review a completed change.",
+      "routes": [{ "harness": "codex" }]
+    }
+  }
+}

@@ -1,0 +1,146 @@
+{
+  "architecture-author": {
+    "source": ".claude/commands/architecture-author.md",
+    "description": "Maintain Landing's high-level architecture canvas, component contracts, and invariants.",
+    "short_description": "Own Landing architecture docs",
+    "prompt": "Use this skill when work changes or clarifies a major component, cross-component contract, durable invariant, or architectural boundary."
+  },
+  "commit-your-changes": {
+    "source": ".claude/commands/commit-your-changes.md",
+    "description": "Audit the shared working tree and safely commit only changes made in the current conversation.",
+    "short_description": "Commit only your changes",
+    "prompt": "Use this skill to commit only the files you changed without disturbing concurrent work."
+  },
+  "council": {
+    "source": ".claude/commands/council.md",
+    "description": "Convene isolated expert personas to stress-test a decision and synthesize their evidence and disagreements.",
+    "short_description": "Convene an expert council",
+    "prompt": "Use this skill to convene named specialist personas around a consequential question or review."
+  },
+  "council-runner": {
+    "source": ".claude/commands/council-runner.md",
+    "description": "Run Landing's council protocol for a parent agent and return only the final synthesis.",
+    "short_description": "Run a council silently",
+    "prompt": "Use this skill when another orchestrator needs a council decision without orchestration narration."
+  },
+  "deep-reviewer": {
+    "source": ".claude/commands/deep-review.md",
+    "description": "Run an evidence-backed multi-lane review over an exact change set, with lanes selected from the actual diff.",
+    "short_description": "Deep-review a change set",
+    "prompt": "Use this skill for an end-of-phase review across the specialist seams touched by a diff."
+  },
+  "director": {
+    "source": ".claude/commands/director.md",
+    "description": "Direct a slate of work through isolated engineering managers and visible evidence gates.",
+    "short_description": "Direct a slate of work",
+    "prompt": "Use this skill to sequence and supervise several engineering workstreams through completion."
+  },
+  "domain-engineer": {
+    "source": ".claude/commands/domain-engineer.md",
+    "description": "Review whether Landing code expresses domain intent, ownership, and justified abstraction.",
+    "short_description": "Domain-intent reviewer",
+    "prompt": "Use this skill for naming, module ownership, procedure-versus-thing, and duplication or extraction judgments."
+  },
+  "engineering-manager": {
+    "source": ".claude/commands/em.md",
+    "description": "Orchestrate Landing specialists, grade their evidence, resolve disagreements, and drive authorized work to a verified close.",
+    "short_description": "Engineering manager orchestrator",
+    "prompt": "Use this skill to run a piece of engineering work through specialist implementation and review."
+  },
+  "founding-engineer": {
+    "source": ".claude/commands/founding-engineer.md",
+    "description": "Provide pragmatic founding-engineer judgment on architecture, sequencing, debt, and product leverage.",
+    "short_description": "Founding engineer advisor",
+    "prompt": "Use this skill for consequential technical strategy, architecture, build-versus-buy, and sequencing decisions."
+  },
+  "frontend-engineer": {
+    "source": ".claude/commands/frontend-engineer.md",
+    "description": "Provide corpus-grounded frontend architecture, React mental-model, component, and state-ownership guidance.",
+    "short_description": "Frontend architecture advisor",
+    "prompt": "Use this skill for frontend component, state, data-flow, effect, and architecture decisions."
+  },
+  "go-engineer": {
+    "source": ".claude/commands/go-engineer.md",
+    "description": "Provide corpus-grounded Go guidance on concurrency lifecycles, error modeling, package and interface design, and testability.",
+    "short_description": "Go concurrency and design engineer",
+    "prompt": "Use this skill for Go implementation and review: goroutine lifecycles, context and cancellation, error taxonomy and wrapping, package and interface boundaries, and testable structure."
+  },
+  "pattern-author": {
+    "source": ".claude/commands/pattern-author.md",
+    "description": "Create and maintain Landing's durable, repeatable engineering patterns.",
+    "short_description": "Own Landing engineering patterns",
+    "prompt": "Use this skill when a repeated engineering rule may deserve a canonical pattern document."
+  },
+  "persona": {
+    "source": ".claude/commands/persona.md",
+    "description": "Research and create a canonical Landing persona command, optional corpus, metadata, and dispatch registrations.",
+    "short_description": "Create a specialist persona",
+    "prompt": "Use this skill to create or extend a source-grounded persona command and its generated agent surfaces."
+  },
+  "product": {
+    "source": ".claude/commands/product.md",
+    "description": "Provide candid product-owner judgment on user value, product-market fit, focus, and sequencing.",
+    "short_description": "Product strategy advisor",
+    "prompt": "Use this skill for product strategy, product-owner feedback, scope, value, and sequencing decisions."
+  },
+  "product-author": {
+    "source": ".claude/commands/product-author.md",
+    "description": "Write or update Landing product documentation as the canonical desired user experience.",
+    "short_description": "Own Landing product docs",
+    "prompt": "Use this skill when work changes or clarifies Landing's user value, experience, behavior, boundaries, messaging, onboarding, routing policy, or user stories."
+  },
+  "security-engineer": {
+    "source": ".claude/commands/security-engineer.md",
+    "description": "Provide threat-model-driven application security review for Landing's credentials, subprocess, configuration, and agent boundaries.",
+    "short_description": "Application security reviewer",
+    "prompt": "Use this skill for threat modeling, security review, secrets, trust boundaries, and supply-chain risk."
+  },
+  "sync": {
+    "source": ".claude/commands/sync.md",
+    "description": "Synchronize canonical Landing commands into generated Claude agents and Codex skills.",
+    "short_description": "Sync Landing agent surfaces",
+    "prompt": "Use this skill after changing canonical command instructions or skill metadata."
+  },
+  "systems-engineer": {
+    "source": ".claude/commands/systems-engineer.md",
+    "description": "Review Landing's end-to-end dataflow, capacity, failure modes, timeouts, retries, cancellation, and operability.",
+    "short_description": "Systems and failure-mode reviewer",
+    "prompt": "Use this skill for systems dataflow, scaling, bottleneck, backpressure, and reliability decisions."
+  },
+  "testing-engineer": {
+    "source": ".claude/commands/testing-engineer.md",
+    "description": "Provide corpus-grounded test design and implement tests that protect meaningful Landing behavior contracts.",
+    "short_description": "Testing strategy engineer",
+    "prompt": "Use this skill to decide what is worth testing and design deterministic behavior-focused tests."
+  },
+  "thank-you": {
+    "source": ".claude/commands/thank-you.md",
+    "description": "Close the current work with an accurate concise handoff and no new actions.",
+    "short_description": "Close the work cleanly",
+    "prompt": "Use this skill to end a completed task with outcome, verification, status, and remaining follow-ups."
+  },
+  "tldr": {
+    "source": ".claude/commands/tldr.md",
+    "description": "Produce a human-level architectural walkthrough of the solution currently being designed.",
+    "short_description": "Walk through the current solution",
+    "prompt": "Use this skill to explain the current proposed solution end to end without changing it."
+  },
+  "typescript-engineer": {
+    "source": ".claude/commands/typescript-engineer.md",
+    "description": "Provide corpus-grounded TypeScript soundness, modeling, boundary, strictness, and scale guidance.",
+    "short_description": "TypeScript type-system advisor",
+    "prompt": "Use this skill for TypeScript design, review, compiler posture, runtime boundaries, and migration decisions."
+  },
+  "ui-engineer": {
+    "source": ".claude/commands/ui-engineer.md",
+    "description": "Provide consumer-grade UI judgment on composition, hierarchy, restraint, accessibility, imagery, and motion.",
+    "short_description": "UI craft and interaction advisor",
+    "prompt": "Use this skill for polished UI composition, visual hierarchy, interaction, and motion decisions."
+  },
+  "watchdog": {
+    "source": ".claude/commands/watchdog.md",
+    "description": "Monitor a long-running job on a recurring interval until it reaches a verified terminal state.",
+    "short_description": "Watch a long-running job",
+    "prompt": "Use this skill to monitor an active build, check, script, or other long-running job."
+  }
+}

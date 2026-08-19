@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      # gofmt -l exits 0 whether or not it lists files, so a non-empty
+      # result must be checked explicitly rather than trusted to the exit
+      # code. Formatting is a property of the source text, not the OS, so
+      # this only needs to run once; Linux is the cheapest runner.
+      - name: Check formatting (gofmt)
+        if: runner.os == 'Linux'
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "gofmt would reformat the following files:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      # comms spawns real child processes and exercises genuine
+      # cross-process file locking, whose semantics differ by OS
+      # (flock/fcntl on unix, LockFileEx on Windows), so the suite runs
+      # on every matrix OS rather than being cross-compiled.
+      - name: Test
+        run: go test ./... -race -count=1

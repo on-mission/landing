@@ -1,0 +1,342 @@
+{
+  "version": 1,
+  "metadataHash": "f0e525e33a7fc76b7cdb0dc26d78a736245a1cd8a3d45844a7f5af9ee1bc6d9d",
+  "roles": {
+    "architecture-author": {
+      "source": ".claude/commands/architecture-author.md",
+      "sourceHash": "d1053c69d956a333138a6b0e587ce35fbb5667e3c3ff8d8616ce1c7d49b5c952",
+      "outputs": [
+        {
+          "path": ".claude/agents/architecture-author.md",
+          "hash": "e11d9e9eb383dc7e154fd5e0dce7d769756bcd41fd754108fe864dedaa173a97"
+        },
+        {
+          "path": ".codex/skills/architecture-author/SKILL.md",
+          "hash": "e11d9e9eb383dc7e154fd5e0dce7d769756bcd41fd754108fe864dedaa173a97"
+        }
+      ]
+    },
+    "commit-your-changes": {
+      "source": ".claude/commands/commit-your-changes.md",
+      "sourceHash": "c0e5dd433316ca932904bb72d454ccdd22466bd069393167af539ad61b785345",
+      "outputs": [
+        {
+          "path": ".claude/agents/commit-your-changes.md",
+          "hash": "f22f6f6d6f1191643023471f344b5fbd7d0a50d3925f2f6578a570b653f4df45"
+        },
+        {
+          "path": ".codex/skills/commit-your-changes/SKILL.md",
+          "hash": "f22f6f6d6f1191643023471f344b5fbd7d0a50d3925f2f6578a570b653f4df45"
+        }
+      ]
+    },
+    "council": {
+      "source": ".claude/commands/council.md",
+      "sourceHash": "04c4e3750343c63bb00a4277244780b607285e09d9ac0b468805fb0c4dcd7036",
+      "outputs": [
+        {
+          "path": ".claude/agents/council.md",
+          "hash": "a04d66921672ef1ec211094f4a53b39f5a769f6d3e1ba312377999e4d4ea0d6e"
+        },
+        {
+          "path": ".codex/skills/council/SKILL.md",
+          "hash": "a04d66921672ef1ec211094f4a53b39f5a769f6d3e1ba312377999e4d4ea0d6e"
+        }
+      ]
+    },
+    "council-runner": {
+      "source": ".claude/commands/council-runner.md",
+      "sourceHash": "8a80e36210f3196ad63cab0eae4ea2bd124d04a07a05f5297ecee9b428b88d1e",
+      "outputs": [
+        {
+          "path": ".claude/agents/council-runner.md",
+          "hash": "542096678e9c1914e3d006db837b16b458f40df07ce173138873790d7db06feb"
+        },
+        {
+          "path": ".codex/skills/council-runner/SKILL.md",
+          "hash": "542096678e9c1914e3d006db837b16b458f40df07ce173138873790d7db06feb"
+        }
+      ]
+    },
+    "deep-reviewer": {
+      "source": ".claude/commands/deep-review.md",
+      "sourceHash": "3d6a01d84d811e64d1f8811e71b749723fa92db9d960835e0c9dc1cff20ef68f",
+      "outputs": [
+        {
+          "path": ".claude/agents/deep-reviewer.md",
+          "hash": "fe89313b4378c74c5ed53d5062f23139b7a0e177cb6631ebcc21700c3ffd4367"
+        },
+        {
+          "path": ".codex/skills/deep-reviewer/SKILL.md",
+          "hash": "fe89313b4378c74c5ed53d5062f23139b7a0e177cb6631ebcc21700c3ffd4367"
+        }
+      ]
+    },
+    "director": {
+      "source": ".claude/commands/director.md",
+      "sourceHash": "74e1f421eb9496535f29e9cb92d1df82d4c4a7cf0ab6ae4a48ab0d124f3617cb",
+      "outputs": [
+        {
+          "path": ".claude/agents/director.md",
+          "hash": "e65e41b9efd42430c96579bac8202bd4ec2b300262e64c0f663abd85dac13021"
+        },
+        {
+          "path": ".codex/skills/director/SKILL.md",
+          "hash": "e65e41b9efd42430c96579bac8202bd4ec2b300262e64c0f663abd85dac13021"
+        }
+      ]
+    },
+    "domain-engineer": {
+      "source": ".claude/commands/domain-engineer.md",
+      "sourceHash": "a1021f9c4d63f343e59a14a191f5d343127b03c4b7561d9ac6a4f5fc471e377b",
+      "outputs": [
+        {
+          "path": ".claude/agents/domain-engineer.md",
+          "hash": "03b0662632000db146fcb44562e4895fbb202ad41b6bc30e7623e3eddbb0d491"
+        },
+        {
+          "path": ".codex/skills/domain-engineer/SKILL.md",
+          "hash": "03b0662632000db146fcb44562e4895fbb202ad41b6bc30e7623e3eddbb0d491"
+        }
+      ]
+    },
+    "engineering-manager": {
+      "source": ".claude/commands/em.md",
+      "sourceHash": "bc58505532c7fb66f04aa60513bc6b6ac3860063efa47238d225571231f546c0",
+      "outputs": [
+        {
+          "path": ".claude/agents/engineering-manager.md",
+          "hash": "2b2e068503a4b2b200db454b5049e27003e4b33fc270d427b4cc0aa98c53c2a9"
+        },
+        {
+          "path": ".codex/skills/engineering-manager/SKILL.md",
+          "hash": "2b2e068503a4b2b200db454b5049e27003e4b33fc270d427b4cc0aa98c53c2a9"
+        }
+      ]
+    },
+    "founding-engineer": {
+      "source": ".claude/commands/founding-engineer.md",
+      "sourceHash": "68322ad394cd5fc67f96e01a125b249357e2bf40febf0b6555c77269345e71ae",
+      "outputs": [
+        {
+          "path": ".claude/agents/founding-engineer.md",
+          "hash": "b4fba8087122f6f683d0eb4e057c3223711faae1cb3e7d3b36af7452e9c80803"
+        },
+        {
+          "path": ".codex/skills/founding-engineer/SKILL.md",
+          "hash": "b4fba8087122f6f683d0eb4e057c3223711faae1cb3e7d3b36af7452e9c80803"
+        }
+      ]
+    },
+    "frontend-engineer": {
+      "source": ".claude/commands/frontend-engineer.md",
+      "sourceHash": "0c97d0bbf4f0aa434afe2c1204d3fe6ef74fa44fe598308780fd111c8eb53a53",
+      "outputs": [
+        {
+          "path": ".claude/agents/frontend-engineer.md",
+          "hash": "c947c764dc17638caeaaa85f24fee2d34033e564d14abea8235d051b189a25b7"
+        },
+        {
+          "path": ".codex/skills/frontend-engineer/SKILL.md",
+          "hash": "c947c764dc17638caeaaa85f24fee2d34033e564d14abea8235d051b189a25b7"
+        }
+      ]
+    },
+    "go-engineer": {
+      "source": ".claude/commands/go-engineer.md",
+      "sourceHash": "06f918ed5e007f1d87c09e080f0bde9d72a276ae8dbf1a917b411d4d3d1d4dc3",
+      "outputs": [
+        {
+          "path": ".claude/agents/go-engineer.md",
+          "hash": "3407b74dbdd620bd1ae4aad55f4599a92737a9ecaf1e0191a7081c93605c8c3f"
+        },
+        {
+          "path": ".codex/skills/go-engineer/SKILL.md",
+          "hash": "3407b74dbdd620bd1ae4aad55f4599a92737a9ecaf1e0191a7081c93605c8c3f"
+        }
+      ]
+    },
+    "pattern-author": {
+      "source": ".claude/commands/pattern-author.md",
+      "sourceHash": "ae19e43066579fa14663c93804e4f8152c03f8e9196d6439df4f82d4e644ce71",
+      "outputs": [
+        {
+          "path": ".claude/agents/pattern-author.md",
+          "hash": "d925ab618d3dd8fe26c701d4d971e1f5e1c350789763d8ed9979d32ee7935f0c"
+        },
+        {
+          "path": ".codex/skills/pattern-author/SKILL.md",
+          "hash": "d925ab618d3dd8fe26c701d4d971e1f5e1c350789763d8ed9979d32ee7935f0c"
+        }
+      ]
+    },
+    "persona": {
+      "source": ".claude/commands/persona.md",
+      "sourceHash": "fd7316161fe099eec867a8f148e3dcba15374e1ec51e4dc526d8966ca451d20d",
+      "outputs": [
+        {
+          "path": ".claude/agents/persona.md",
+          "hash": "28b63891373fece2cd3a674221bdd71629037a8a706ab956d73137e59af96988"
+        },
+        {
+          "path": ".codex/skills/persona/SKILL.md",
+          "hash": "28b63891373fece2cd3a674221bdd71629037a8a706ab956d73137e59af96988"
+        }
+      ]
+    },
+    "product": {
+      "source": ".claude/commands/product.md",
+      "sourceHash": "96b052c81eac7cbafc1f668913d1f5ed98d9459a907a57abd2a9716b442d1bc9",
+      "outputs": [
+        {
+          "path": ".claude/agents/product.md",
+          "hash": "639a653dcd284ce4b8b32cdd7543a38b0e914cd7933880c7321ec49f685bce66"
+        },
+        {
+          "path": ".codex/skills/product/SKILL.md",
+          "hash": "639a653dcd284ce4b8b32cdd7543a38b0e914cd7933880c7321ec49f685bce66"
+        }
+      ]
+    },
+    "product-author": {
+      "source": ".claude/commands/product-author.md",
+      "sourceHash": "e98acdee1e18e72b263f7064412a5e0595513a7403cbe205e730c2b4d38a9dcd",
+      "outputs": [
+        {
+          "path": ".claude/agents/product-author.md",
+          "hash": "a6e6b064762434c980819bf5a873716e4682ed748ade40a8322b8f1bd8dcd5d5"
+        },
+        {
+          "path": ".codex/skills/product-author/SKILL.md",
+          "hash": "a6e6b064762434c980819bf5a873716e4682ed748ade40a8322b8f1bd8dcd5d5"
+        }
+      ]
+    },
+    "security-engineer": {
+      "source": ".claude/commands/security-engineer.md",
+      "sourceHash": "0ac875fa6c1e073d80ba611071ec825f89cd20452cd61bddc567ca4c51478c5d",
+      "outputs": [
+        {
+          "path": ".claude/agents/security-engineer.md",
+          "hash": "a8b13c1ddc2ae37d68448218a5016629ec0b1af30577fe965949725eab7d8600"
+        },
+        {
+          "path": ".codex/skills/security-engineer/SKILL.md",
+          "hash": "a8b13c1ddc2ae37d68448218a5016629ec0b1af30577fe965949725eab7d8600"
+        }
+      ]
+    },
+    "sync": {
+      "source": ".claude/commands/sync.md",
+      "sourceHash": "61b7e6ff32b8299becd2bb7b157fc4b8e672cb6d7738bad1bb626007f28631ff",
+      "outputs": [
+        {
+          "path": ".claude/agents/sync.md",
+          "hash": "54d45e40e9bce853efdc48b2d49bf90598df2bd1f5ad028dec8e12900dbb0e55"
+        },
+        {
+          "path": ".codex/skills/sync/SKILL.md",
+          "hash": "54d45e40e9bce853efdc48b2d49bf90598df2bd1f5ad028dec8e12900dbb0e55"
+        }
+      ]
+    },
+    "systems-engineer": {
+      "source": ".claude/commands/systems-engineer.md",
+      "sourceHash": "f188fd12be3031f455459227488b12bddb9320e8f7480f6021beaaa7f648d391",
+      "outputs": [
+        {
+          "path": ".claude/agents/systems-engineer.md",
+          "hash": "dcde5c5baafcbd7726262ec4b2063dd219c8fe1aaa7ced515bf11fac58e0d6b1"
+        },
+        {
+          "path": ".codex/skills/systems-engineer/SKILL.md",
+          "hash": "dcde5c5baafcbd7726262ec4b2063dd219c8fe1aaa7ced515bf11fac58e0d6b1"
+        }
+      ]
+    },
+    "testing-engineer": {
+      "source": ".claude/commands/testing-engineer.md",
+      "sourceHash": "c1f031034381bf85df136c7438f3a78fc1d7ecc0543fa50622d2754b23ff9dd2",
+      "outputs": [
+        {
+          "path": ".claude/agents/testing-engineer.md",
+          "hash": "1de9c6085e9e9727678ac5642115384c963983244495da9f7b1927d4432dc0be"
+        },
+        {
+          "path": ".codex/skills/testing-engineer/SKILL.md",
+          "hash": "1de9c6085e9e9727678ac5642115384c963983244495da9f7b1927d4432dc0be"
+        }
+      ]
+    },
+    "thank-you": {
+      "source": ".claude/commands/thank-you.md",
+      "sourceHash": "40243adf66f9e9c534162487a9d523791ec1482bb94825ea36c409232c42e292",
+      "outputs": [
+        {
+          "path": ".claude/agents/thank-you.md",
+          "hash": "2532a1ac0c58fa2b86e78615dc11987fb2605ec14a1b47dfa592cb21bdd7f8d0"
+        },
+        {
+          "path": ".codex/skills/thank-you/SKILL.md",
+          "hash": "2532a1ac0c58fa2b86e78615dc11987fb2605ec14a1b47dfa592cb21bdd7f8d0"
+        }
+      ]
+    },
+    "tldr": {
+      "source": ".claude/commands/tldr.md",
+      "sourceHash": "99b761bc187eb79385772c69e882afd7ed693144a9e85be35a23d374f0f3ce8e",
+      "outputs": [
+        {
+          "path": ".claude/agents/tldr.md",
+          "hash": "4f4959c0759e11e50506bc099dbb000a3ab83385371157f21312641aa4aee1c7"
+        },
+        {
+          "path": ".codex/skills/tldr/SKILL.md",
+          "hash": "4f4959c0759e11e50506bc099dbb000a3ab83385371157f21312641aa4aee1c7"
+        }
+      ]
+    },
+    "typescript-engineer": {
+      "source": ".claude/commands/typescript-engineer.md",
+      "sourceHash": "c236eab466ad71249f8bc4414acabd7ae6fcfa8993f4dce229cf5173a62a1028",
+      "outputs": [
+        {
+          "path": ".claude/agents/typescript-engineer.md",
+          "hash": "bde2b636c25dde4cb65143f8fa87dd43ff7b06d91dbbf9e34e04394a16ab4153"
+        },
+        {
+          "path": ".codex/skills/typescript-engineer/SKILL.md",
+          "hash": "bde2b636c25dde4cb65143f8fa87dd43ff7b06d91dbbf9e34e04394a16ab4153"
+        }
+      ]
+    },
+    "ui-engineer": {
+      "source": ".claude/commands/ui-engineer.md",
+      "sourceHash": "67fd379b660c274a4070590107be08268572fb7ee1d4d149c083744f8231a761",
+      "outputs": [
+        {
+          "path": ".claude/agents/ui-engineer.md",
+          "hash": "5f3c6bbe3edddf211abec9f6f6e4e15e42996c040eee918e24a4f1269bc3b9b0"
+        },
+        {
+          "path": ".codex/skills/ui-engineer/SKILL.md",
+          "hash": "5f3c6bbe3edddf211abec9f6f6e4e15e42996c040eee918e24a4f1269bc3b9b0"
+        }
+      ]
+    },
+    "watchdog": {
+      "source": ".claude/commands/watchdog.md",
+      "sourceHash": "992ae861fbef8e4ae7c8f668da42016a97fdec70b227a3dd5c24a17ff1abd191",
+      "outputs": [
+        {
+          "path": ".claude/agents/watchdog.md",
+          "hash": "6d2d0e431edd7067b42b97841c1fb4a24903a1b4c51f280518b5fc1b9a2964c6"
+        },
+        {
+          "path": ".codex/skills/watchdog/SKILL.md",
+          "hash": "6d2d0e431edd7067b42b97841c1fb4a24903a1b4c51f280518b5fc1b9a2964c6"
+        }
+      ]
+    }
+  }
+}

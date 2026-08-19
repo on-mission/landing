@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "tiers": {
+    "reviewer": {
+      "description": "Review a completed change, not write the initial implementation.",
+      "routes": [
+        { "harness": "claude", "model": "claude-sonnet-5" }
+      ]
+    }
+  }
+}

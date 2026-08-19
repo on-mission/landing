@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "tiers": {
+    "custom": {
+      "notFor": "Legacy tier prose.",
+      "routes": [{ "harness": "codex" }]
+    }
+  }
+}

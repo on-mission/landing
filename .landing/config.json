@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "defaultTier": "engineer",
+  "tiers": {
+    "engineer": {
+      "description": "Work needing sustained reasoning, design judgment, or unfamiliar territory rather than mechanical edits or anything you would merge without reading.",
+      "routes": [
+        {
+          "harness": "grok",
+          "model": "grok-4.5"
+        },
+        {
+          "harness": "codex",
+          "model": "gpt-5.6-terra"
+        },
+        {
+          "harness": "claude",
+          "model": "claude-sonnet-5"
+        }
+      ]
+    },
+    "intern": {
+      "description": "Bounded mechanical work with a checkable result, not work whose specification is itself the hard part.",
+      "routes": [
+        {
+          "harness": "grok",
+          "model": "grok-4.5"
+        },
+        {
+          "harness": "codex",
+          "model": "gpt-5.3-codex-spark"
+        },
+        {
+          "harness": "claude",
+          "model": "claude-haiku-4-5-20251001"
+        },
+        {
+          "harness": "codex",
+          "model": "gpt-5.6-luna"
+        },
+        {
+          "harness": "cline",
+          "fallbackBelowPercent": 20
+        }
+      ]
+    }
+  }
+}
