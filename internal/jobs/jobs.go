@@ -297,7 +297,7 @@ func (store *Store) Cancel(ctx context.Context, jobID string) (*harness.JobRecor
 		journal.RecordConversation(context.Background(), conversationID, record)
 	}
 	if command != nil && command.Process != nil {
-		if err := command.Process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		if err := terminateProcess(command.Process); err != nil && !errors.Is(err, os.ErrProcessDone) {
 			return &record, fmt.Errorf("terminate job %q: %w", jobID, err)
 		}
 	}
@@ -334,7 +334,7 @@ func (store *Store) AbandonTimedOut(ctx context.Context, jobID string, timeout t
 	// produce a result no caller will ever read. The thread id is captured from
 	// the harness before this point, so continuation survives the termination.
 	if command != nil && command.Process != nil {
-		if err := command.Process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		if err := terminateProcess(command.Process); err != nil && !errors.Is(err, os.ErrProcessDone) {
 			return &record, "", fmt.Errorf("terminate abandoned job %q: %w", jobID, err)
 		}
 	}
@@ -413,7 +413,7 @@ func (store *Store) Shutdown(ctx context.Context) {
 		if completed || command == nil || command.Process == nil {
 			continue
 		}
-		if err := command.Process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
+		if err := terminateProcess(command.Process); err != nil && !errors.Is(err, os.ErrProcessDone) {
 			continue
 		}
 	}

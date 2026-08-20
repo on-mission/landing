@@ -105,12 +105,12 @@ func TestAbandonTimedOutDoesNotLeakSubprocess(t *testing.T) {
 	// Abandonment signals the harness; it does not wait for it to die, because
 	// waiting would reinstate the very block the timeout exists to escape. So
 	// the assertion is that the process reaches a terminated state, not that it
-	// has already reached one by the time the call returns. Signal(0) also
-	// succeeds against a terminated-but-unreaped child, so this polls until the
-	// store's own goroutine has reaped it.
+	// has already reached one by the time the call returns. On Unix, a
+	// terminated-but-unreaped child still reports alive, so this polls until
+	// the store's own goroutine has reaped it.
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		if err := timedOut.Proc.Process.Signal(syscall.Signal(0)); err != nil {
+		if !processAlive(timedOut.Proc.Process) {
 			return
 		}
 		if time.Now().After(deadline) {
@@ -339,7 +339,7 @@ func terminateHelper(t *testing.T, store *Store, record *harness.JobRecord) {
 	if record.Proc == nil || record.Proc.Process == nil {
 		t.Fatal("job has no subprocess to terminate")
 	}
-	if err := record.Proc.Process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
+	if err := terminateProcess(record.Proc.Process); err != nil && !errors.Is(err, os.ErrProcessDone) {
 		t.Fatal(err)
 	}
 	if _, err := store.Wait(context.Background(), record.JobID); err != nil {

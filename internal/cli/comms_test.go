@@ -112,7 +112,7 @@ func TestRunCommsHookUsesHarnessSpecificOutputAndMarksDelivery(t *testing.T) {
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			sessionID := test.harness + "-session"
-			code, err, stdout := runCommsHookForTest(project, []string{"comms", "hook", "--harness", test.harness, "--event", "session-start"}, `{"session_id":"`+sessionID+`","cwd":"`+project+`"}`)
+			code, err, stdout := runCommsHookForTest(project, []string{"comms", "hook", "--harness", test.harness, "--event", "session-start"}, hookPayload(t, sessionID, project))
 			if err != nil || code != exitOK {
 				t.Fatalf("Run(comms hook session-start) = %d, %v; want %d, nil", code, err, exitOK)
 			}
@@ -128,7 +128,7 @@ func TestRunCommsHookUsesHarnessSpecificOutputAndMarksDelivery(t *testing.T) {
 			if sendErr != nil {
 				t.Fatalf("Send() returned unexpected error: %v", sendErr)
 			}
-			code, err, stdout = runCommsHookForTest(project, []string{"comms", "hook", "--harness", test.harness, "--event", "turn-end"}, `{"session_id":"`+sessionID+`","cwd":"`+project+`"}`)
+			code, err, stdout = runCommsHookForTest(project, []string{"comms", "hook", "--harness", test.harness, "--event", "turn-end"}, hookPayload(t, sessionID, project))
 			if err != nil || code != exitOK {
 				t.Fatalf("Run(comms hook turn-end) = %d, %v; want %d, nil", code, err, exitOK)
 			}
@@ -154,7 +154,7 @@ func TestRunCommsHookFailsOpenWhenStateRootIsUnreadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("LANDING_STATE_DIR", stateFile)
-	code, err, stdout := runCommsHookForTest(project, []string{"comms", "hook", "--harness", "codex", "--event", "session-start"}, `{"session_id":"broken-store","cwd":"`+project+`"}`)
+	code, err, stdout := runCommsHookForTest(project, []string{"comms", "hook", "--harness", "codex", "--event", "session-start"}, hookPayload(t, "broken-store", project))
 	if err != nil || code != exitOK || stdout.Len() != 0 {
 		t.Fatalf("Run(comms hook with unreadable state root) = %d, %v, %q; want %d, nil, empty output", code, err, stdout.String(), exitOK)
 	}
@@ -188,11 +188,11 @@ func TestCommsProvenanceKeepsDispatchedChildOnItsThread(t *testing.T) {
 	if _, err := store.Send(context.Background(), comms.Message{From: "reviewer", To: "thread", Body: "received"}); err != nil {
 		t.Fatalf("Send(thread message) returned unexpected error: %v", err)
 	}
-	code, err, stdout := runCommsHookForTest(project, []string{"comms", "hook", "--harness", "claude", "--event", "turn-end"}, `{"session_id":"child-session","cwd":"`+project+`"}`)
+	code, err, stdout := runCommsHookForTest(project, []string{"comms", "hook", "--harness", "claude", "--event", "turn-end"}, hookPayload(t, "child-session", project))
 	if err != nil || code != exitOK || !strings.Contains(stdout.String(), "received") {
 		t.Fatalf("Run(comms hook for dispatched child) = %d, %v, %q; want delivered thread message", code, err, stdout.String())
 	}
-	code, err, _ = runCommsHookForTest(project, []string{"comms", "hook", "--harness", "claude", "--event", "session-end"}, `{"session_id":"child-session","cwd":"`+project+`"}`)
+	code, err, _ = runCommsHookForTest(project, []string{"comms", "hook", "--harness", "claude", "--event", "session-end"}, hookPayload(t, "child-session", project))
 	if err != nil || code != exitOK {
 		t.Fatalf("Run(comms hook session-end for dispatched child) = %d, %v; want %d, nil", code, err, exitOK)
 	}
@@ -212,7 +212,7 @@ func TestCommsProbeProvenanceDoesNotRegisterHookSession(t *testing.T) {
 	project, store := commsTestStore(t)
 	t.Setenv(jobs.CommsProbeEnvironment, "1")
 
-	code, err, stdout := runCommsHookForTest(project, []string{"comms", "hook", "--harness", "claude", "--event", "session-start"}, `{"session_id":"capacity-probe","cwd":"`+project+`"}`)
+	code, err, stdout := runCommsHookForTest(project, []string{"comms", "hook", "--harness", "claude", "--event", "session-start"}, hookPayload(t, "capacity-probe", project))
 	if err != nil || code != exitOK || stdout.Len() != 0 {
 		t.Fatalf("Run(comms hook for capacity probe) = %d, %v, %q; want %d, nil, empty output", code, err, stdout.String(), exitOK)
 	}
@@ -382,6 +382,18 @@ func runCommsHookForTest(project string, args []string, payload string) (int, er
 	return code, err, stdout
 }
 
+// hookPayload builds hook stdin JSON through the encoder rather than string
+// concatenation: a Windows cwd contains backslashes, which are invalid raw
+// inside a JSON string and corrupt a hand-built literal.
+func hookPayload(t *testing.T, sessionID string, cwd string) string {
+	t.Helper()
+	encoded, err := json.Marshal(map[string]string{"session_id": sessionID, "cwd": cwd})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(encoded)
+}
+
 func TestCommsInstallReportsOutcomeDistinctFromThePlan(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("test fixture uses POSIX executable shims")
@@ -437,6 +449,9 @@ func installHookHarnessShims(t *testing.T) {
 
 func installFakeCodex(t *testing.T) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("test fixture uses a POSIX shell script to fake the codex executable")
+	}
 	directory := t.TempDir()
 	path := filepath.Join(directory, "codex")
 	contents := "#!/bin/sh\n" +

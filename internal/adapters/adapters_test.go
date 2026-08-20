@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -46,6 +47,9 @@ func TestClaudeBuildRequestsCarryPermissionMode(t *testing.T) {
 }
 
 func TestClaudeCapacityProbeCarriesCommsProvenance(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("test fixture uses a POSIX shell script to fake the claude executable")
+	}
 	directory := t.TempDir()
 	observed := filepath.Join(directory, "probe-environment")
 	command := filepath.Join(directory, "claude")
