@@ -63,3 +63,10 @@ func TestStateRootHonorsLandingStateDir(t *testing.T) {
 		t.Fatalf("StateRoot() = %q, %v; want %q, nil", got, err, want)
 	}
 }
+
+func TestDisplayPreservesWindowsSeparators(t *testing.T) {
+	path := `C:\Users\Landing Model\PERSONA.md`
+	if got, want := Display(path), `"C:\Users\Landing Model\PERSONA.md"`; got != want {
+		t.Fatalf("Display(%q) = %q, want %q", path, got, want)
+	}
+}

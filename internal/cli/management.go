@@ -13,6 +13,7 @@ import (
 
 	"github.com/on-mission/landing/internal/config"
 	"github.com/on-mission/landing/internal/harness"
+	"github.com/on-mission/landing/internal/paths"
 	"github.com/on-mission/landing/internal/router"
 )
 
@@ -239,12 +240,12 @@ func initializeConfiguration(ctx context.Context, invocationDir string, stdout i
 	}
 	path := filepath.Join(invocationDir, config.ConfigFileName)
 	if _, err := os.Lstat(path); err == nil {
-		return exitUsage, harness.NewError(harness.ErrorCodeConfigInvalid, fmt.Sprintf("configuration file %q already exists", path), nil)
+		return exitUsage, harness.NewError(harness.ErrorCodeConfigInvalid, fmt.Sprintf("configuration file %s already exists", paths.Display(path)), nil)
 	} else if !errors.Is(err, fs.ErrNotExist) {
-		return exitFailed, fmt.Errorf("examine configuration path %q: %w", path, err)
+		return exitFailed, fmt.Errorf("examine configuration path %s: %w", paths.Display(path), err)
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return exitFailed, fmt.Errorf("create configuration directory %q: %w", filepath.Dir(path), err)
+		return exitFailed, fmt.Errorf("create configuration directory %s: %w", paths.Display(filepath.Dir(path)), err)
 	}
 	configuration := config.Config{Version: config.SchemaVersion, Tiers: map[string]config.Tier{}}
 	contents, err := json.MarshalIndent(projectConfigurationFile(configuration), "", "  ")
@@ -253,7 +254,7 @@ func initializeConfiguration(ctx context.Context, invocationDir string, stdout i
 	}
 	if err := writeConfigurationFile(path, append(contents, '\n')); err != nil {
 		if errors.Is(err, fs.ErrExist) {
-			return exitUsage, harness.NewError(harness.ErrorCodeConfigInvalid, fmt.Sprintf("configuration file %q already exists", path), nil)
+			return exitUsage, harness.NewError(harness.ErrorCodeConfigInvalid, fmt.Sprintf("configuration file %s already exists", paths.Display(path)), nil)
 		}
 		return exitFailed, err
 	}
@@ -298,26 +299,26 @@ func projectConfigurationFile(configuration config.Config) configurationFile {
 func writeConfigurationFile(path string, contents []byte) error {
 	temporary, err := os.CreateTemp(filepath.Dir(path), ".config.json-")
 	if err != nil {
-		return fmt.Errorf("create temporary configuration file in %q: %w", filepath.Dir(path), err)
+		return fmt.Errorf("create temporary configuration file in %s: %w", paths.Display(filepath.Dir(path)), err)
 	}
 	temporaryPath := temporary.Name()
 	if _, err := temporary.Write(contents); err != nil {
-		return removeTemporaryConfiguration(temporary, temporaryPath, fmt.Errorf("write temporary configuration file %q: %w", temporaryPath, err))
+		return removeTemporaryConfiguration(temporary, temporaryPath, fmt.Errorf("write temporary configuration file %s: %w", paths.Display(temporaryPath), err))
 	}
 	if err := temporary.Chmod(0o644); err != nil {
-		return removeTemporaryConfiguration(temporary, temporaryPath, fmt.Errorf("set mode on temporary configuration file %q: %w", temporaryPath, err))
+		return removeTemporaryConfiguration(temporary, temporaryPath, fmt.Errorf("set mode on temporary configuration file %s: %w", paths.Display(temporaryPath), err))
 	}
 	if err := temporary.Sync(); err != nil {
-		return removeTemporaryConfiguration(temporary, temporaryPath, fmt.Errorf("sync temporary configuration file %q: %w", temporaryPath, err))
+		return removeTemporaryConfiguration(temporary, temporaryPath, fmt.Errorf("sync temporary configuration file %s: %w", paths.Display(temporaryPath), err))
 	}
 	if err := temporary.Close(); err != nil {
-		return removeTemporaryConfiguration(nil, temporaryPath, fmt.Errorf("close temporary configuration file %q: %w", temporaryPath, err))
+		return removeTemporaryConfiguration(nil, temporaryPath, fmt.Errorf("close temporary configuration file %s: %w", paths.Display(temporaryPath), err))
 	}
 	if err := os.Link(temporaryPath, path); err != nil {
 		return removeTemporaryConfiguration(nil, temporaryPath, err)
 	}
 	if err := os.Remove(temporaryPath); err != nil {
-		return fmt.Errorf("remove temporary configuration file %q: %w", temporaryPath, err)
+		return fmt.Errorf("remove temporary configuration file %s: %w", paths.Display(temporaryPath), err)
 	}
 
 	return nil
@@ -326,11 +327,11 @@ func writeConfigurationFile(path string, contents []byte) error {
 func removeTemporaryConfiguration(temporary *os.File, path string, cause error) error {
 	if temporary != nil {
 		if err := temporary.Close(); err != nil && !errors.Is(err, fs.ErrInvalid) {
-			cause = errors.Join(cause, fmt.Errorf("close temporary configuration file %q: %w", path, err))
+			cause = errors.Join(cause, fmt.Errorf("close temporary configuration file %s: %w", paths.Display(path), err))
 		}
 	}
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return errors.Join(cause, fmt.Errorf("remove temporary configuration file %q: %w", path, err))
+		return errors.Join(cause, fmt.Errorf("remove temporary configuration file %s: %w", paths.Display(path), err))
 	}
 
 	return cause

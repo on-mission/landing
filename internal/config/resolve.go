@@ -10,6 +10,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/on-mission/landing/internal/paths"
 	"strings"
 
 	"github.com/on-mission/landing/internal/harness"
@@ -43,7 +45,7 @@ func resolve(ctx context.Context, invocationDir string, harnesses Harnesses) (Co
 	searchFrom, err := filepath.Abs(invocationDir)
 	if err != nil {
 		return Config{}, invalidConfigError(
-			fmt.Sprintf("configuration search directory %q could not be made absolute", invocationDir),
+			fmt.Sprintf("configuration search directory %s could not be made absolute", paths.Display(invocationDir)),
 			err,
 		)
 	}
@@ -62,7 +64,7 @@ func resolve(ctx context.Context, invocationDir string, harnesses Harnesses) (Co
 	contents, err := os.ReadFile(path)
 	if err != nil {
 		return Config{}, invalidConfigError(
-			fmt.Sprintf("could not read configuration file %q", path),
+			fmt.Sprintf("could not read configuration file %s", paths.Display(path)),
 			err,
 		)
 	}
@@ -70,15 +72,15 @@ func resolve(ctx context.Context, invocationDir string, harnesses Harnesses) (Co
 	file, err := decodeProjectConfig(contents)
 	if err != nil {
 		return Config{}, invalidConfigError(
-			fmt.Sprintf("could not parse configuration file %q", path),
+			fmt.Sprintf("could not parse configuration file %s", paths.Display(path)),
 			err,
 		)
 	}
 	if file.Version != SchemaVersion {
 		return Config{}, invalidConfigError(
 			fmt.Sprintf(
-				"configuration file %q field %q has value %d; supported value is %d",
-				path,
+				"configuration file %s field %q has value %d; supported value is %d",
+				paths.Display(path),
 				"version",
 				file.Version,
 				SchemaVersion,
@@ -99,7 +101,7 @@ func resolve(ctx context.Context, invocationDir string, harnesses Harnesses) (Co
 
 	if err := validate(resolved, harnesses); err != nil {
 		return Config{}, invalidConfigError(
-			fmt.Sprintf("configuration file %q is invalid", path),
+			fmt.Sprintf("configuration file %s is invalid", paths.Display(path)),
 			err,
 		)
 	}
@@ -137,10 +139,10 @@ func resolveProjectFile(file projectConfigFile) (Config, error) {
 func projectConfigResolutionError(path string, cause error) error {
 	var absent tiersAbsentError
 	if errors.As(cause, &absent) {
-		return invalidConfigError(fmt.Sprintf("configuration file %q is invalid", path), cause)
+		return invalidConfigError(fmt.Sprintf("configuration file %s is invalid", paths.Display(path)), cause)
 	}
 
-	return invalidConfigError(fmt.Sprintf("could not parse configuration file %q", path), cause)
+	return invalidConfigError(fmt.Sprintf("could not parse configuration file %s", paths.Display(path)), cause)
 }
 
 func findConfigFile(ctx context.Context, searchFrom string) (string, string, error) {
@@ -154,7 +156,7 @@ func findConfigFile(ctx context.Context, searchFrom string) (string, string, err
 		if err == nil {
 			if !info.Mode().IsRegular() {
 				return "", "", invalidConfigError(
-					fmt.Sprintf("configuration path %q has mode %s, not a regular file", path, info.Mode()),
+					fmt.Sprintf("configuration path %s has mode %s, not a regular file", paths.Display(path), info.Mode()),
 					nil,
 				)
 			}
@@ -163,7 +165,7 @@ func findConfigFile(ctx context.Context, searchFrom string) (string, string, err
 		}
 		if !errors.Is(err, fs.ErrNotExist) {
 			return "", "", invalidConfigError(
-				fmt.Sprintf("could not examine configuration path %q", path),
+				fmt.Sprintf("could not examine configuration path %s", paths.Display(path)),
 				err,
 			)
 		}
@@ -172,7 +174,7 @@ func findConfigFile(ctx context.Context, searchFrom string) (string, string, err
 		if parent == directory {
 			return "", "", harness.NewError(
 				harness.ErrorCodeConfigNotFound,
-				fmt.Sprintf("no %s exists between %q and %q", ConfigFileName, searchFrom, directory),
+				fmt.Sprintf("no %s exists between %s and %s", ConfigFileName, paths.Display(searchFrom), paths.Display(directory)),
 				nil,
 			)
 		}

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/on-mission/landing/internal/harness"
+	"github.com/on-mission/landing/internal/paths"
 )
 
 type staticHarnesses map[string][]string
@@ -65,10 +66,10 @@ func TestLoad(t *testing.T) {
 			wantCode:      harness.ErrorCodeConfigNotFound,
 			wantError: func(invocation, _ string) string {
 				return fmt.Sprintf(
-					"no %s exists between %q and %q",
+					"no %s exists between %s and %s",
 					ConfigFileName,
-					invocation,
-					filesystemRoot(invocation),
+					paths.Display(invocation),
+					paths.Display(filesystemRoot(invocation)),
 				)
 			},
 		},
@@ -77,7 +78,7 @@ func TestLoad(t *testing.T) {
 			fixture:  "malformed.json",
 			wantCode: harness.ErrorCodeConfigInvalid,
 			wantError: func(_, configPath string) string {
-				return fmt.Sprintf("could not parse configuration file %q: unexpected EOF", configPath)
+				return fmt.Sprintf("could not parse configuration file %s: unexpected EOF", paths.Display(configPath))
 			},
 		},
 		{
@@ -85,7 +86,7 @@ func TestLoad(t *testing.T) {
 			fixture:  "unknown-field.json",
 			wantCode: harness.ErrorCodeConfigInvalid,
 			wantError: func(_, configPath string) string {
-				return fmt.Sprintf("could not parse configuration file %q: json: unknown field %q", configPath, "misspelled")
+				return fmt.Sprintf("could not parse configuration file %s: json: unknown field %q", paths.Display(configPath), "misspelled")
 			},
 		},
 		{
@@ -93,7 +94,7 @@ func TestLoad(t *testing.T) {
 			fixture:  "legacy-use-when.json",
 			wantCode: harness.ErrorCodeConfigInvalid,
 			wantError: func(_, configPath string) string {
-				return fmt.Sprintf("could not parse configuration file %q: json: unknown field %q", configPath, "useWhen")
+				return fmt.Sprintf("could not parse configuration file %s: json: unknown field %q", paths.Display(configPath), "useWhen")
 			},
 		},
 		{
@@ -101,7 +102,7 @@ func TestLoad(t *testing.T) {
 			fixture:  "legacy-not-for.json",
 			wantCode: harness.ErrorCodeConfigInvalid,
 			wantError: func(_, configPath string) string {
-				return fmt.Sprintf("could not parse configuration file %q: json: unknown field %q", configPath, "notFor")
+				return fmt.Sprintf("could not parse configuration file %s: json: unknown field %q", paths.Display(configPath), "notFor")
 			},
 		},
 		{
@@ -109,7 +110,7 @@ func TestLoad(t *testing.T) {
 			fixture:  "legacy-validated-by.json",
 			wantCode: harness.ErrorCodeConfigInvalid,
 			wantError: func(_, configPath string) string {
-				return fmt.Sprintf("could not parse configuration file %q: json: unknown field %q", configPath, "validatedBy")
+				return fmt.Sprintf("could not parse configuration file %s: json: unknown field %q", paths.Display(configPath), "validatedBy")
 			},
 		},
 		{
@@ -118,8 +119,8 @@ func TestLoad(t *testing.T) {
 			wantCode: harness.ErrorCodeConfigInvalid,
 			wantError: func(_, configPath string) string {
 				return fmt.Sprintf(
-					"configuration file %q field %q has value 2; supported value is %d",
-					configPath,
+					"configuration file %s field %q has value 2; supported value is %d",
+					paths.Display(configPath),
 					"version",
 					SchemaVersion,
 				)
@@ -183,7 +184,7 @@ func TestLoad(t *testing.T) {
 			fixture:  "default-inherited-tier.json",
 			wantCode: harness.ErrorCodeConfigInvalid,
 			wantError: func(_, configPath string) string {
-				return fmt.Sprintf("configuration file %q is invalid: field \"tiers\" is absent; configuration file names no tiers", configPath)
+				return fmt.Sprintf("configuration file %s is invalid: field \"tiers\" is absent; configuration file names no tiers", paths.Display(configPath))
 			},
 		},
 		{
@@ -192,8 +193,8 @@ func TestLoad(t *testing.T) {
 			wantCode: harness.ErrorCodeConfigInvalid,
 			wantError: func(_, configPath string) string {
 				return fmt.Sprintf(
-					"configuration file %q is invalid: field \"defaultTier\" has value \"absent\"; configured tiers are \"reviewer\"",
-					configPath,
+					"configuration file %s is invalid: field \"defaultTier\" has value \"absent\"; configured tiers are \"reviewer\"",
+					paths.Display(configPath),
 				)
 			},
 		},
@@ -202,7 +203,7 @@ func TestLoad(t *testing.T) {
 			fixture:  "absent-tiers.json",
 			wantCode: harness.ErrorCodeConfigInvalid,
 			wantError: func(_, configPath string) string {
-				return fmt.Sprintf("configuration file %q is invalid: field \"tiers\" is absent; configuration file names no tiers", configPath)
+				return fmt.Sprintf("configuration file %s is invalid: field \"tiers\" is absent; configuration file names no tiers", paths.Display(configPath))
 			},
 		},
 		{
@@ -210,7 +211,7 @@ func TestLoad(t *testing.T) {
 			fixture:  "empty-tiers.json",
 			wantCode: harness.ErrorCodeConfigInvalid,
 			wantError: func(_, configPath string) string {
-				return fmt.Sprintf("configuration file %q is invalid: field \"tiers\" is empty; configuration file names no tiers", configPath)
+				return fmt.Sprintf("configuration file %s is invalid: field \"tiers\" is empty; configuration file names no tiers", paths.Display(configPath))
 			},
 		},
 		{
@@ -219,8 +220,8 @@ func TestLoad(t *testing.T) {
 			wantCode: harness.ErrorCodeConfigInvalid,
 			wantError: func(_, configPath string) string {
 				return fmt.Sprintf(
-					"configuration file %q is invalid: tier \"custom\" route 0 field \"harness\" has unsupported value \"unknown\"",
-					configPath,
+					"configuration file %s is invalid: tier \"custom\" route 0 field \"harness\" has unsupported value \"unknown\"",
+					paths.Display(configPath),
 				)
 			},
 		},
@@ -229,7 +230,7 @@ func TestLoad(t *testing.T) {
 			fixture:  "empty-routes.json",
 			wantCode: harness.ErrorCodeConfigInvalid,
 			wantError: func(_, configPath string) string {
-				return fmt.Sprintf("configuration file %q is invalid: tier \"custom\" field \"routes\" has zero routes", configPath)
+				return fmt.Sprintf("configuration file %s is invalid: tier \"custom\" field \"routes\" has zero routes", paths.Display(configPath))
 			},
 		},
 		{
@@ -238,8 +239,8 @@ func TestLoad(t *testing.T) {
 			wantCode: harness.ErrorCodeConfigInvalid,
 			wantError: func(_, configPath string) string {
 				return fmt.Sprintf(
-					"configuration file %q is invalid: tier name has value \"\"; tier \"\" field \"routes\" has zero routes; tier \"bad\" route 0 field \"harness\" has unsupported value \"unknown-one\"; tier \"bad\" route 1 field \"harness\" has unsupported value \"unknown-two\"",
-					configPath,
+					"configuration file %s is invalid: tier name has value \"\"; tier \"\" field \"routes\" has zero routes; tier \"bad\" route 0 field \"harness\" has unsupported value \"unknown-one\"; tier \"bad\" route 1 field \"harness\" has unsupported value \"unknown-two\"",
+					paths.Display(configPath),
 				)
 			},
 		},
@@ -310,7 +311,7 @@ func TestLoadValidatesHarnessModels(t *testing.T) {
 			name:      "rejects an unsupported model",
 			harnesses: testHarnesses,
 			contents:  `{"version":1,"tiers":{"custom":{"routes":[{"harness":"grok","model":"grok-unknown"}]}}}`,
-			wantError: `configuration file %q is invalid: tier "custom" route 0 field "model" has unsupported value "grok-unknown" for harness "grok"; supported models are "grok-4.6", "grok-4.5"`,
+			wantError: `configuration file %s is invalid: tier "custom" route 0 field "model" has unsupported value "grok-unknown" for harness "grok"; supported models are "grok-4.6", "grok-4.5"`,
 		},
 	}
 
@@ -330,7 +331,7 @@ func TestLoadValidatesHarnessModels(t *testing.T) {
 			if err == nil {
 				t.Fatal("Load() returned nil error, want configuration error")
 			}
-			wantError := fmt.Sprintf(test.wantError, path)
+			wantError := fmt.Sprintf(test.wantError, paths.Display(path))
 			if err.Error() != wantError {
 				t.Fatalf("Load() error = %q, want %q", err.Error(), wantError)
 			}

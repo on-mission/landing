@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/on-mission/landing/internal/paths"
 )
 
 // AddTier adds tier to the complete project tier set at configPath.
@@ -101,14 +103,14 @@ func mutate(ctx context.Context, configPath string, harnesses Harnesses, change 
 	path, err := filepath.Abs(configPath)
 	if err != nil {
 		return false, invalidConfigError(
-			fmt.Sprintf("configuration path %q could not be made absolute", configPath),
+			fmt.Sprintf("configuration path %s could not be made absolute", paths.Display(configPath)),
 			err,
 		)
 	}
 	contents, err := os.ReadFile(path)
 	if err != nil {
 		return false, invalidConfigError(
-			fmt.Sprintf("could not read configuration file %q", path),
+			fmt.Sprintf("could not read configuration file %s", paths.Display(path)),
 			err,
 		)
 	}
@@ -119,15 +121,15 @@ func mutate(ctx context.Context, configPath string, harnesses Harnesses, change 
 	file, err := decodeProjectConfig(contents)
 	if err != nil {
 		return false, invalidConfigError(
-			fmt.Sprintf("could not parse configuration file %q", path),
+			fmt.Sprintf("could not parse configuration file %s", paths.Display(path)),
 			err,
 		)
 	}
 	if file.Version != SchemaVersion {
 		return false, invalidConfigError(
 			fmt.Sprintf(
-				"configuration file %q field %q has value %d; supported value is %d",
-				path,
+				"configuration file %s field %q has value %d; supported value is %d",
+				paths.Display(path),
 				"version",
 				file.Version,
 				SchemaVersion,
@@ -149,7 +151,7 @@ func mutate(ctx context.Context, configPath string, harnesses Harnesses, change 
 	}
 	if err := validate(configuration, harnesses); err != nil {
 		return false, invalidConfigError(
-			fmt.Sprintf("configuration file %q is invalid", path),
+			fmt.Sprintf("configuration file %s is invalid", paths.Display(path)),
 			err,
 		)
 	}
@@ -157,7 +159,7 @@ func mutate(ctx context.Context, configPath string, harnesses Harnesses, change 
 	written, err := marshalProjectConfig(configuration)
 	if err != nil {
 		return false, invalidConfigError(
-			fmt.Sprintf("could not encode configuration file %q", path),
+			fmt.Sprintf("could not encode configuration file %s", paths.Display(path)),
 			err,
 		)
 	}
@@ -229,38 +231,38 @@ func projectRoutes(routes []Route) []projectRoute {
 func writeProjectConfigAtomically(ctx context.Context, path string, contents []byte) error {
 	info, err := os.Stat(path)
 	if err != nil {
-		return invalidConfigError(fmt.Sprintf("could not examine configuration file %q", path), err)
+		return invalidConfigError(fmt.Sprintf("could not examine configuration file %s", paths.Display(path)), err)
 	}
 
 	temporary, err := os.CreateTemp(filepath.Dir(path), ".config.json-")
 	if err != nil {
 		return invalidConfigError(
-			fmt.Sprintf("could not create temporary configuration file beside %q", path),
+			fmt.Sprintf("could not create temporary configuration file beside %s", paths.Display(path)),
 			err,
 		)
 	}
 	temporaryPath := temporary.Name()
 	if _, err := temporary.Write(contents); err != nil {
 		return removeTemporaryProjectConfig(temporary, temporaryPath, invalidConfigError(
-			fmt.Sprintf("could not write temporary configuration file %q", temporaryPath),
+			fmt.Sprintf("could not write temporary configuration file %s", paths.Display(temporaryPath)),
 			err,
 		))
 	}
 	if err := temporary.Chmod(info.Mode().Perm()); err != nil {
 		return removeTemporaryProjectConfig(temporary, temporaryPath, invalidConfigError(
-			fmt.Sprintf("could not set permissions on temporary configuration file %q", temporaryPath),
+			fmt.Sprintf("could not set permissions on temporary configuration file %s", paths.Display(temporaryPath)),
 			err,
 		))
 	}
 	if err := temporary.Sync(); err != nil {
 		return removeTemporaryProjectConfig(temporary, temporaryPath, invalidConfigError(
-			fmt.Sprintf("could not sync temporary configuration file %q", temporaryPath),
+			fmt.Sprintf("could not sync temporary configuration file %s", paths.Display(temporaryPath)),
 			err,
 		))
 	}
 	if err := temporary.Close(); err != nil {
 		return removeTemporaryProjectConfig(nil, temporaryPath, invalidConfigError(
-			fmt.Sprintf("could not close temporary configuration file %q", temporaryPath),
+			fmt.Sprintf("could not close temporary configuration file %s", paths.Display(temporaryPath)),
 			err,
 		))
 	}
@@ -269,7 +271,7 @@ func writeProjectConfigAtomically(ctx context.Context, path string, contents []b
 	}
 	if err := os.Rename(temporaryPath, path); err != nil {
 		return removeTemporaryProjectConfig(nil, temporaryPath, invalidConfigError(
-			fmt.Sprintf("could not replace configuration file %q", path),
+			fmt.Sprintf("could not replace configuration file %s", paths.Display(path)),
 			err,
 		))
 	}
@@ -281,14 +283,14 @@ func removeTemporaryProjectConfig(temporary *os.File, path string, cause error) 
 	if temporary != nil {
 		if err := temporary.Close(); err != nil && !errors.Is(err, fs.ErrInvalid) {
 			cause = errors.Join(cause, invalidConfigError(
-				fmt.Sprintf("could not close temporary configuration file %q", path),
+				fmt.Sprintf("could not close temporary configuration file %s", paths.Display(path)),
 				err,
 			))
 		}
 	}
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return errors.Join(cause, invalidConfigError(
-			fmt.Sprintf("could not remove temporary configuration file %q", path),
+			fmt.Sprintf("could not remove temporary configuration file %s", paths.Display(path)),
 			err,
 		))
 	}

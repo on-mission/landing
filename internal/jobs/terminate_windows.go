@@ -2,7 +2,11 @@
 
 package jobs
 
-import "os"
+import (
+	"errors"
+	"os"
+	"syscall"
+)
 
 // terminateProcess ends the process. Windows has no equivalent of SIGTERM
 // that a harness can catch and shut down cleanly on, so this calls
@@ -11,5 +15,14 @@ import "os"
 // scope matches Unix's SIGTERM in that only this process is targeted, not
 // any children it spawned.
 func terminateProcess(process *os.Process) error {
-	return process.Kill()
+	return normalizeTerminationError(process.Kill())
+}
+
+func normalizeTerminationError(err error) error {
+	// TerminateProcess reports ERROR_ACCESS_DENIED after a process has exited.
+	if errors.Is(err, syscall.ERROR_ACCESS_DENIED) {
+		return nil
+	}
+
+	return err
 }

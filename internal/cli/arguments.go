@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/on-mission/landing/internal/paths"
 )
 
 type routeOption struct {
@@ -213,10 +215,10 @@ func resolvePersonaInstructions(instructionsFile parsedOption, stdin io.Reader, 
 	if instructionsFile.Set {
 		contents, err := os.ReadFile(instructionsFile.Value)
 		if errors.Is(err, os.ErrNotExist) {
-			return parsedOption{}, &usageError{message: fmt.Sprintf("instructions file %q does not exist", instructionsFile.Value)}
+			return parsedOption{}, &usageError{message: fmt.Sprintf("instructions file %s does not exist", paths.Display(instructionsFile.Value))}
 		}
 		if err != nil {
-			return parsedOption{}, fmt.Errorf("read instructions file %q: %w", instructionsFile.Value, err)
+			return parsedOption{}, fmt.Errorf("read instructions file %s: %w", paths.Display(instructionsFile.Value), err)
 		}
 
 		return parsedOption{Value: string(contents), Set: true}, nil
@@ -290,10 +292,10 @@ func resolvePrompt(promptFile parsedOption, positionals []string, stdin io.Reade
 	if promptFile.Set {
 		contents, err := os.ReadFile(promptFile.Value)
 		if errors.Is(err, os.ErrNotExist) {
-			return "", &usageError{message: fmt.Sprintf("prompt file %q does not exist", promptFile.Value)}
+			return "", &usageError{message: fmt.Sprintf("prompt file %s does not exist", paths.Display(promptFile.Value))}
 		}
 		if err != nil {
-			return "", fmt.Errorf("read prompt file %q: %w", promptFile.Value, err)
+			return "", fmt.Errorf("read prompt file %s: %w", paths.Display(promptFile.Value), err)
 		}
 		return strings.TrimSpace(string(contents)), nil
 	}

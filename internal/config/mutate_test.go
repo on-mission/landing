@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/on-mission/landing/internal/paths"
 )
 
 func TestMutations(t *testing.T) {
@@ -148,7 +150,7 @@ func TestMutationsRejectInvalidChangesWithoutWriting(t *testing.T) {
 			mutate: func(ctx context.Context, path string, harnesses Harnesses) error {
 				return AddTier(ctx, path, harnesses, Tier{Name: "reviewer", Routes: []Route{{Harness: "codex"}}})
 			},
-			wantError: "configuration file %q is invalid: field \"tiers\" is absent; configuration file names no tiers",
+			wantError: "configuration file %s is invalid: field \"tiers\" is absent; configuration file names no tiers",
 		},
 		{
 			name:    "rejects updating a missing tier",
@@ -174,7 +176,7 @@ func TestMutationsRejectInvalidChangesWithoutWriting(t *testing.T) {
 			mutate: func(ctx context.Context, path string, harnesses Harnesses) error {
 				return RemoveTier(ctx, path, harnesses, "reviewer")
 			},
-			wantError: "configuration file %q is invalid: field \"tiers\" is empty; configuration file names no tiers",
+			wantError: "configuration file %s is invalid: field \"tiers\" is empty; configuration file names no tiers",
 		},
 		{
 			name:    "keeps the file unchanged when the default would be missing",
@@ -182,7 +184,7 @@ func TestMutationsRejectInvalidChangesWithoutWriting(t *testing.T) {
 			mutate: func(ctx context.Context, path string, harnesses Harnesses) error {
 				return SetDefaultTier(ctx, path, harnesses, "missing")
 			},
-			wantError: "configuration file %q is invalid: field \"defaultTier\" has value \"missing\"; configured tiers are \"reviewer\"",
+			wantError: "configuration file %s is invalid: field \"defaultTier\" has value \"missing\"; configured tiers are \"reviewer\"",
 		},
 		{
 			name:    "keeps the file unchanged when a route harness is unsupported",
@@ -190,7 +192,7 @@ func TestMutationsRejectInvalidChangesWithoutWriting(t *testing.T) {
 			mutate: func(ctx context.Context, path string, harnesses Harnesses) error {
 				return AddTier(ctx, path, harnesses, Tier{Name: "writer", Routes: []Route{{Harness: "unknown"}}})
 			},
-			wantError: "configuration file %q is invalid: tier \"writer\" route 0 field \"harness\" has unsupported value \"unknown\"",
+			wantError: "configuration file %s is invalid: tier \"writer\" route 0 field \"harness\" has unsupported value \"unknown\"",
 		},
 	}
 
@@ -209,8 +211,8 @@ func TestMutationsRejectInvalidChangesWithoutWriting(t *testing.T) {
 				t.Fatal("configuration mutation returned nil error, want configuration error")
 			}
 			wantError := test.wantError
-			if strings.Contains(wantError, "%q") {
-				wantError = fmt.Sprintf(wantError, path)
+			if strings.Contains(wantError, "%s") {
+				wantError = fmt.Sprintf(wantError, paths.Display(path))
 			}
 			if err.Error() != wantError {
 				t.Fatalf("configuration mutation error = %q, want %q", err.Error(), wantError)
@@ -240,7 +242,7 @@ func TestEachMutationRejectsUnsupportedModelsWithoutWriting(t *testing.T) {
 			mutate: func(ctx context.Context, path string) error {
 				return AddTier(ctx, path, testHarnesses, Tier{Name: "writer", Routes: []Route{{Harness: "grok", Model: testStringPointer("grok-unknown")}}})
 			},
-			wantError: `configuration file %q is invalid: tier "writer" route 0 field "model" has unsupported value "grok-unknown" for harness "grok"; supported models are "grok-4.6", "grok-4.5"`,
+			wantError: `configuration file %s is invalid: tier "writer" route 0 field "model" has unsupported value "grok-unknown" for harness "grok"; supported models are "grok-4.6", "grok-4.5"`,
 		},
 		{
 			name:     "update tier",
@@ -250,7 +252,7 @@ func TestEachMutationRejectsUnsupportedModelsWithoutWriting(t *testing.T) {
 
 				return err
 			},
-			wantError: `configuration file %q is invalid: tier "reviewer" route 0 field "model" has unsupported value "grok-unknown" for harness "grok"; supported models are "grok-4.6", "grok-4.5"`,
+			wantError: `configuration file %s is invalid: tier "reviewer" route 0 field "model" has unsupported value "grok-unknown" for harness "grok"; supported models are "grok-4.6", "grok-4.5"`,
 		},
 		{
 			name:     "remove tier",
@@ -258,7 +260,7 @@ func TestEachMutationRejectsUnsupportedModelsWithoutWriting(t *testing.T) {
 			mutate: func(ctx context.Context, path string) error {
 				return RemoveTier(ctx, path, testHarnesses, "editor")
 			},
-			wantError: `configuration file %q is invalid: tier "reviewer" route 0 field "model" has unsupported value "grok-unknown" for harness "grok"; supported models are "grok-4.6", "grok-4.5"`,
+			wantError: `configuration file %s is invalid: tier "reviewer" route 0 field "model" has unsupported value "grok-unknown" for harness "grok"; supported models are "grok-4.6", "grok-4.5"`,
 		},
 		{
 			name:     "set default tier",
@@ -266,7 +268,7 @@ func TestEachMutationRejectsUnsupportedModelsWithoutWriting(t *testing.T) {
 			mutate: func(ctx context.Context, path string) error {
 				return SetDefaultTier(ctx, path, testHarnesses, "reviewer")
 			},
-			wantError: `configuration file %q is invalid: tier "reviewer" route 0 field "model" has unsupported value "grok-unknown" for harness "grok"; supported models are "grok-4.6", "grok-4.5"`,
+			wantError: `configuration file %s is invalid: tier "reviewer" route 0 field "model" has unsupported value "grok-unknown" for harness "grok"; supported models are "grok-4.6", "grok-4.5"`,
 		},
 	}
 
@@ -284,7 +286,7 @@ func TestEachMutationRejectsUnsupportedModelsWithoutWriting(t *testing.T) {
 			if err == nil {
 				t.Fatal("configuration mutation returned nil error, want configuration error")
 			}
-			wantError := fmt.Sprintf(test.wantError, path)
+			wantError := fmt.Sprintf(test.wantError, paths.Display(path))
 			if err.Error() != wantError {
 				t.Fatalf("configuration mutation error = %q, want %q", err.Error(), wantError)
 			}

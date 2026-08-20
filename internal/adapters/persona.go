@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/on-mission/landing/internal/harness"
+	"github.com/on-mission/landing/internal/paths"
 )
 
 func personaDelivery(persona *harness.Persona, delivery harness.PersonaDelivery) *harness.PersonaDelivery {
@@ -29,5 +30,5 @@ func personaReferenceMaterial(persona harness.Persona) string {
 		files = strings.Join(persona.ReferenceFiles, ", ")
 	}
 
-	return fmt.Sprintf("Use the project reference material in %q as part of this perspective. The available files are %s; consult the ones that apply before doing the work.", persona.Directory, files)
+	return fmt.Sprintf("Use the project reference material in %s as part of this perspective. The available files are %s; consult the ones that apply before doing the work.", paths.Display(persona.Directory), files)
 }

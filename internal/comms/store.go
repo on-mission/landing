@@ -62,7 +62,7 @@ func Open(ctx context.Context, cwd string) (Store, error) {
 	projectKey := sha256.Sum256([]byte(project))
 	directory := filepath.Join(stateRoot, "comms", hex.EncodeToString(projectKey[:]))
 	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return nil, fmt.Errorf("create comms state directory %q: %w", directory, err)
+		return nil, fmt.Errorf("create comms state directory %s: %w", paths.Display(directory), err)
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -424,11 +424,11 @@ func projectDirectory(ctx context.Context, cwd string) (string, error) {
 	}
 	absCWD, err := filepath.Abs(cwd)
 	if err != nil {
-		return "", fmt.Errorf("resolve comms working directory %q: %w", cwd, err)
+		return "", fmt.Errorf("resolve comms working directory %s: %w", paths.Display(cwd), err)
 	}
 	resolvedCWD, err := filepath.EvalSymlinks(absCWD)
 	if err != nil {
-		return "", fmt.Errorf("resolve comms working directory %q: %w", cwd, err)
+		return "", fmt.Errorf("resolve comms working directory %s: %w", paths.Display(cwd), err)
 	}
 	for directory := resolvedCWD; ; directory = filepath.Dir(directory) {
 		if err := ctx.Err(); err != nil {
@@ -439,11 +439,11 @@ func projectDirectory(ctx context.Context, cwd string) (string, error) {
 			return directory, nil
 		}
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return "", fmt.Errorf("inspect comms project directory %q: %w", directory, err)
+			return "", fmt.Errorf("inspect comms project directory %s: %w", paths.Display(directory), err)
 		}
 		parent := filepath.Dir(directory)
 		if parent == directory {
-			return "", fmt.Errorf("find comms project directory from %q: no .landing directory", resolvedCWD)
+			return "", fmt.Errorf("find comms project directory from %s: no .landing directory", paths.Display(resolvedCWD))
 		}
 	}
 }
@@ -455,7 +455,7 @@ func loadState(directory string) (storeState, error) {
 		return emptyState(), nil
 	}
 	if err != nil {
-		return storeState{}, fmt.Errorf("open comms state %q: %w", path, err)
+		return storeState{}, fmt.Errorf("open comms state %s: %w", paths.Display(path), err)
 	}
 
 	decoder := json.NewDecoder(file)
@@ -467,14 +467,14 @@ func loadState(directory string) (storeState, error) {
 	}
 	closeErr := file.Close()
 	if decodeErr != nil {
-		return storeState{}, fmt.Errorf("decode comms state %q: %w", path, errors.Join(decodeErr, closeErr))
+		return storeState{}, fmt.Errorf("decode comms state %s: %w", paths.Display(path), errors.Join(decodeErr, closeErr))
 	}
 	if closeErr != nil {
-		return storeState{}, fmt.Errorf("close comms state %q: %w", path, closeErr)
+		return storeState{}, fmt.Errorf("close comms state %s: %w", paths.Display(path), closeErr)
 	}
 	normalizeThreadPIDs(&state)
 	if err := validateState(state); err != nil {
-		return storeState{}, fmt.Errorf("validate comms state %q: %w", path, err)
+		return storeState{}, fmt.Errorf("validate comms state %s: %w", paths.Display(path), err)
 	}
 	return state, nil
 }
@@ -495,26 +495,26 @@ func writeState(ctx context.Context, directory string, state storeState) error {
 	}
 	temporary, err := os.CreateTemp(directory, ".state-")
 	if err != nil {
-		return fmt.Errorf("create temporary comms state in %q: %w", directory, err)
+		return fmt.Errorf("create temporary comms state in %s: %w", paths.Display(directory), err)
 	}
 	temporaryPath := temporary.Name()
 	if err := encodeState(temporary, state); err != nil {
 		return removeTemporaryState(temporary, temporaryPath, err)
 	}
 	if err := temporary.Chmod(0o600); err != nil {
-		return removeTemporaryState(temporary, temporaryPath, fmt.Errorf("set comms state permissions %q: %w", temporaryPath, err))
+		return removeTemporaryState(temporary, temporaryPath, fmt.Errorf("set comms state permissions %s: %w", paths.Display(temporaryPath), err))
 	}
 	if err := temporary.Sync(); err != nil {
-		return removeTemporaryState(temporary, temporaryPath, fmt.Errorf("sync temporary comms state %q: %w", temporaryPath, err))
+		return removeTemporaryState(temporary, temporaryPath, fmt.Errorf("sync temporary comms state %s: %w", paths.Display(temporaryPath), err))
 	}
 	if err := temporary.Close(); err != nil {
-		return removeTemporaryState(nil, temporaryPath, fmt.Errorf("close temporary comms state %q: %w", temporaryPath, err))
+		return removeTemporaryState(nil, temporaryPath, fmt.Errorf("close temporary comms state %s: %w", paths.Display(temporaryPath), err))
 	}
 	if err := ctx.Err(); err != nil {
 		return removeTemporaryState(nil, temporaryPath, err)
 	}
 	if err := os.Rename(temporaryPath, filepath.Join(directory, "state.json")); err != nil {
-		return removeTemporaryState(nil, temporaryPath, fmt.Errorf("replace comms state in %q: %w", directory, err))
+		return removeTemporaryState(nil, temporaryPath, fmt.Errorf("replace comms state in %s: %w", paths.Display(directory), err))
 	}
 
 	return nil
@@ -523,7 +523,7 @@ func writeState(ctx context.Context, directory string, state storeState) error {
 func encodeState(file *os.File, state storeState) error {
 	encoder := json.NewEncoder(file)
 	if err := encoder.Encode(state); err != nil {
-		return fmt.Errorf("encode temporary comms state %q: %w", file.Name(), err)
+		return fmt.Errorf("encode temporary comms state %s: %w", paths.Display(file.Name()), err)
 	}
 
 	return nil
@@ -532,11 +532,11 @@ func encodeState(file *os.File, state storeState) error {
 func removeTemporaryState(file *os.File, path string, cause error) error {
 	if file != nil {
 		if err := file.Close(); err != nil && !errors.Is(err, fs.ErrInvalid) {
-			cause = errors.Join(cause, fmt.Errorf("close temporary comms state %q: %w", path, err))
+			cause = errors.Join(cause, fmt.Errorf("close temporary comms state %s: %w", paths.Display(path), err))
 		}
 	}
 	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		cause = errors.Join(cause, fmt.Errorf("remove temporary comms state %q: %w", path, err))
+		cause = errors.Join(cause, fmt.Errorf("remove temporary comms state %s: %w", paths.Display(path), err))
 	}
 
 	return cause

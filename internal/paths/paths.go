@@ -10,6 +10,11 @@ import (
 	"github.com/on-mission/landing/internal/harness"
 )
 
+// Display renders path for a model-facing message without escaping its separators.
+func Display(path string) string {
+	return `"` + path + `"`
+}
+
 // ResolveDispatchCwd resolves where a dispatch runs. An empty suppliedCWD means
 // the invocation directory; a relative one resolves against it; an absolute one
 // is used as given. Nothing is inferred from an ancestor directory.
@@ -30,7 +35,7 @@ func ResolveDispatchCwd(ctx context.Context, invocationDir string, suppliedCWD s
 	if err != nil {
 		return "", harness.WrapError(
 			harness.ErrorCodeInvalidCWD,
-			fmt.Sprintf("cwd %q does not exist or cannot be resolved.", cwd),
+			fmt.Sprintf("cwd %s does not exist or cannot be resolved.", Display(cwd)),
 			nil,
 			err,
 		)
@@ -71,7 +76,7 @@ func EnsureDirs(ctx context.Context) (string, error) {
 		return "", err
 	}
 	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return "", fmt.Errorf("create jobs directory %q: %w", directory, err)
+		return "", fmt.Errorf("create jobs directory %s: %w", Display(directory), err)
 	}
 
 	return directory, nil

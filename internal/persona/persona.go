@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/on-mission/landing/internal/harness"
+	"github.com/on-mission/landing/internal/paths"
 )
 
 const (
@@ -70,7 +71,7 @@ func List(ctx context.Context, cwd string) ([]Persona, error) {
 	if directory == "" {
 		return nil, harness.NewError(
 			harness.ErrorCodePersonaNotFound,
-			fmt.Sprintf("no .landing/personas directory exists between %q and %q", searchFrom, searchedTo),
+			fmt.Sprintf("no .landing/personas directory exists between %s and %s", paths.Display(searchFrom), paths.Display(searchedTo)),
 			nil,
 		)
 	}
@@ -82,7 +83,7 @@ func findPersonasDirectory(ctx context.Context, cwd string) (string, string, str
 	searchFrom, err := filepath.Abs(cwd)
 	if err != nil {
 		return "", "", "", invalidPersonaError(
-			fmt.Sprintf("persona search directory %q could not be made absolute", cwd),
+			fmt.Sprintf("persona search directory %s could not be made absolute", paths.Display(cwd)),
 		)
 	}
 
@@ -96,7 +97,7 @@ func findPersonasDirectory(ctx context.Context, cwd string) (string, string, str
 		if err == nil {
 			if !info.IsDir() {
 				return "", "", "", invalidPersonaError(
-					fmt.Sprintf("personas path %q has mode %s, not a directory", candidate, info.Mode()),
+					fmt.Sprintf("personas path %s has mode %s, not a directory", paths.Display(candidate), info.Mode()),
 				)
 			}
 
@@ -105,7 +106,7 @@ func findPersonasDirectory(ctx context.Context, cwd string) (string, string, str
 		if !errorsIsNotExist(err) {
 			return "", "", "", harness.WrapError(
 				harness.ErrorCodeInvalidPersona,
-				fmt.Sprintf("could not examine personas path %q", candidate),
+				fmt.Sprintf("could not examine personas path %s", paths.Display(candidate)),
 				nil,
 				err,
 			)
@@ -127,7 +128,7 @@ func listPersonas(ctx context.Context, directory string) ([]Persona, error) {
 	if err != nil {
 		return nil, harness.WrapError(
 			harness.ErrorCodeInvalidPersona,
-			fmt.Sprintf("could not list personas in %q", directory),
+			fmt.Sprintf("could not list personas in %s", paths.Display(directory)),
 			nil,
 			err,
 		)
@@ -172,7 +173,7 @@ func loadPersona(ctx context.Context, personasDirectory string, name string) (Pe
 			if statErr != nil && !errorsIsNotExist(statErr) {
 				return Persona{}, harness.WrapError(
 					harness.ErrorCodeInvalidPersona,
-					fmt.Sprintf("could not examine persona directory %q", directory),
+					fmt.Sprintf("could not examine persona directory %s", paths.Display(directory)),
 					nil,
 					statErr,
 				)
@@ -183,7 +184,7 @@ func loadPersona(ctx context.Context, personasDirectory string, name string) (Pe
 
 		return Persona{}, harness.WrapError(
 			harness.ErrorCodeInvalidPersona,
-			fmt.Sprintf("could not read persona definition %q", definitionPath),
+			fmt.Sprintf("could not read persona definition %s", paths.Display(definitionPath)),
 			nil,
 			err,
 		)
@@ -318,7 +319,7 @@ func referenceFiles(ctx context.Context, directory string) ([]string, error) {
 	if err != nil {
 		return nil, harness.WrapError(
 			harness.ErrorCodeInvalidPersona,
-			fmt.Sprintf("could not list persona directory %q", directory),
+			fmt.Sprintf("could not list persona directory %s", paths.Display(directory)),
 			nil,
 			err,
 		)
@@ -351,13 +352,13 @@ func personaNotFoundError(name string, searchFrom string, searchedTo string, ava
 
 	return harness.NewError(
 		harness.ErrorCodePersonaNotFound,
-		fmt.Sprintf("persona %q does not exist between %q and %q; available personas: %s", name, searchFrom, searchedTo, availableText),
+		fmt.Sprintf("persona %q does not exist between %s and %s; available personas: %s", name, paths.Display(searchFrom), paths.Display(searchedTo), availableText),
 		nil,
 	)
 }
 
 func invalidDefinitionError(path string, problem string) error {
-	return invalidPersonaError(fmt.Sprintf("persona definition %q is invalid: %s", path, problem))
+	return invalidPersonaError(fmt.Sprintf("persona definition %s is invalid: %s", paths.Display(path), problem))
 }
 
 func invalidPersonaError(message string) error {

@@ -13,6 +13,7 @@ import (
 	"github.com/on-mission/landing/internal/harness"
 	"github.com/on-mission/landing/internal/jobs"
 	"github.com/on-mission/landing/internal/journal"
+	"github.com/on-mission/landing/internal/paths"
 	"github.com/on-mission/landing/internal/persona"
 	"github.com/on-mission/landing/internal/router"
 )
@@ -162,7 +163,7 @@ func (engine *Engine) dispatch(ctx context.Context, tier config.Tier, request Re
 	if !filepath.IsAbs(cwd) {
 		return Response{}, harness.NewError(
 			harness.ErrorCodeInvalidCWD,
-			fmt.Sprintf("dispatch cwd %q is not absolute; it is resolved before dispatch", cwd),
+			fmt.Sprintf("dispatch cwd %s is not absolute; it is resolved before dispatch", paths.Display(cwd)),
 			nil,
 		)
 	}
@@ -209,7 +210,7 @@ func (engine *Engine) dispatchCast(ctx context.Context, tier config.Tier, reques
 	if !filepath.IsAbs(cwd) {
 		return Response{}, harness.NewError(
 			harness.ErrorCodeInvalidCWD,
-			fmt.Sprintf("dispatch cwd %q is not absolute; it is resolved before dispatch", cwd),
+			fmt.Sprintf("dispatch cwd %s is not absolute; it is resolved before dispatch", paths.Display(cwd)),
 			nil,
 		)
 	}

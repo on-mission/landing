@@ -9,6 +9,8 @@ import (
 	"os"
 	"syscall"
 	"time"
+
+	"github.com/on-mission/landing/internal/paths"
 	"unsafe"
 )
 
@@ -26,7 +28,7 @@ type stateLock struct {
 func acquireStateLock(ctx context.Context, path string, exclusive bool) (*stateLock, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		return nil, fmt.Errorf("open comms lock %q: %w", path, err)
+		return nil, fmt.Errorf("open comms lock %s: %w", paths.Display(path), err)
 	}
 	flags := uintptr(lockfileFailImmediately)
 	if exclusive {
@@ -46,7 +48,7 @@ func acquireStateLock(ctx context.Context, path string, exclusive bool) (*stateL
 		}
 		if errno, ok := lockErr.(syscall.Errno); !ok || errno != lockViolation {
 			closeErr := file.Close()
-			return nil, errors.Join(fmt.Errorf("acquire comms lock %q: %w", path, lockErr), closeErr)
+			return nil, errors.Join(fmt.Errorf("acquire comms lock %s: %w", paths.Display(path), lockErr), closeErr)
 		}
 		if err := waitForLock(ctx); err != nil {
 			closeErr := file.Close()

@@ -124,6 +124,14 @@ func TestResolveMalformedFrontMatterNamesDefinition(t *testing.T) {
 	}
 }
 
+func TestInvalidDefinitionErrorPreservesWindowsPath(t *testing.T) {
+	path := `C:\Users\Landing Model\.landing\personas\reviewer\PERSONA.md`
+	want := `persona definition "C:\Users\Landing Model\.landing\personas\reviewer\PERSONA.md" is invalid: front matter does not begin with ---`
+	if got := invalidDefinitionError(path, "front matter does not begin with ---").Error(); got != want {
+		t.Fatalf("invalidDefinitionError() = %q, want %q", got, want)
+	}
+}
+
 func TestListIncludesDescriptions(t *testing.T) {
 	root := t.TempDir()
 	writePersona(t, root, "zebra", "last", "zebra instructions")

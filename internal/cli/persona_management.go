@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/on-mission/landing/internal/harness"
+	"github.com/on-mission/landing/internal/paths"
 	"github.com/on-mission/landing/internal/persona"
 )
 
@@ -104,25 +105,25 @@ func addPersona(ctx context.Context, invocationDir string, values options, stdou
 	}
 	directory := managedPersonaDirectory(invocationDir, values.Name.Value)
 	if err := os.MkdirAll(filepath.Dir(directory), 0o755); err != nil {
-		return exitFailed, fmt.Errorf("create personas directory %q: %w", filepath.Dir(directory), err)
+		return exitFailed, fmt.Errorf("create personas directory %s: %w", paths.Display(filepath.Dir(directory)), err)
 	}
 	if err := os.Mkdir(directory, 0o755); err != nil {
 		if errors.Is(err, fs.ErrExist) {
-			return exitUsage, harness.NewError(harness.ErrorCodeInvalidPersona, fmt.Sprintf("persona %q already exists at %q", values.Name.Value, directory), nil)
+			return exitUsage, harness.NewError(harness.ErrorCodeInvalidPersona, fmt.Sprintf("persona %q already exists at %s", values.Name.Value, paths.Display(directory)), nil)
 		}
 
-		return exitFailed, fmt.Errorf("create persona directory %q: %w", directory, err)
+		return exitFailed, fmt.Errorf("create persona directory %s: %w", paths.Display(directory), err)
 	}
 	path := filepath.Join(directory, personaDefinition)
 	if err := os.WriteFile(path, personaDefinitionContents(values.Description.Value, values.Instructions.Value), 0o644); err != nil {
 		if removeErr := os.RemoveAll(directory); removeErr != nil {
 			return exitFailed, errors.Join(
-				fmt.Errorf("write persona definition %q: %w", path, err),
-				fmt.Errorf("remove incomplete persona directory %q: %w", directory, removeErr),
+				fmt.Errorf("write persona definition %s: %w", paths.Display(path), err),
+				fmt.Errorf("remove incomplete persona directory %s: %w", paths.Display(directory), removeErr),
 			)
 		}
 
-		return exitFailed, fmt.Errorf("write persona definition %q: %w", path, err)
+		return exitFailed, fmt.Errorf("write persona definition %s: %w", paths.Display(path), err)
 	}
 	if _, err := fmt.Fprintf(stdout, "added persona: %s\npersona definition: %s\n", values.Name.Value, path); err != nil {
 		return exitFailed, err
@@ -155,7 +156,7 @@ func updatePersona(ctx context.Context, invocationDir string, values options, st
 		body = values.Instructions.Value
 	}
 	if err := os.WriteFile(path, personaDefinitionContents(description, body), 0o644); err != nil {
-		return exitFailed, fmt.Errorf("write persona definition %q: %w", path, err)
+		return exitFailed, fmt.Errorf("write persona definition %s: %w", paths.Display(path), err)
 	}
 	if _, err := fmt.Fprintf(stdout, "updated persona: %s\n", selected.Name); err != nil {
 		return exitFailed, err
@@ -170,7 +171,7 @@ func removePersona(ctx context.Context, invocationDir string, name string, stdou
 		return exitUsage, err
 	}
 	if err := os.RemoveAll(selected.Directory); err != nil {
-		return exitFailed, fmt.Errorf("remove persona directory %q: %w", selected.Directory, err)
+		return exitFailed, fmt.Errorf("remove persona directory %s: %w", paths.Display(selected.Directory), err)
 	}
 	references := "no reference files"
 	if len(selected.ReferenceFiles) != 0 {
@@ -192,14 +193,14 @@ func managedPersona(ctx context.Context, invocationDir string, name string) (per
 			return persona.Persona{}, "", nil, missingManagedPersona(ctx, invocationDir, name)
 		}
 
-		return persona.Persona{}, "", nil, fmt.Errorf("read persona definition %q: %w", path, err)
+		return persona.Persona{}, "", nil, fmt.Errorf("read persona definition %s: %w", paths.Display(path), err)
 	}
 	selected, err := persona.Resolve(ctx, name, invocationDir)
 	if err != nil {
 		return persona.Persona{}, "", nil, err
 	}
 	if selected.Directory != directory {
-		return persona.Persona{}, "", nil, harness.NewError(harness.ErrorCodePersonaNotFound, fmt.Sprintf("persona %q does not exist at %q", name, directory), nil)
+		return persona.Persona{}, "", nil, harness.NewError(harness.ErrorCodePersonaNotFound, fmt.Sprintf("persona %q does not exist at %s", name, paths.Display(directory)), nil)
 	}
 
 	return selected, path, contents, nil
