@@ -264,8 +264,8 @@ func (adapter *lifecycleAdapter) Capabilities() harness.Capabilities {
 // The lifecycle tests drive a local helper process, never a real harness, so
 // this fake reports no catalog and no installation rather than pretending to
 // one it does not have.
-func (adapter *lifecycleAdapter) Models() []string {
-	return nil
+func (adapter *lifecycleAdapter) ModelCatalog() harness.ModelCatalog {
+	return harness.ModelCatalog{Authority: harness.ModelCatalogAuthoritative}
 }
 
 func (adapter *lifecycleAdapter) Detect(context.Context) harness.Detection {

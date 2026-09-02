@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -49,10 +50,18 @@ type grokResult struct {
 
 type grokBilling struct {
 	Config struct {
-		CreditUsagePercent *float64 `json:"creditUsagePercent"`
+		CreditUsagePercent json.RawMessage `json:"creditUsagePercent"`
 		CurrentPeriod      struct {
 			End *string `json:"end"`
 		} `json:"currentPeriod"`
+		OnDemandCap struct {
+			Value json.RawMessage `json:"val"`
+		} `json:"onDemandCap"`
+		OnDemandUsed struct {
+			Value json.RawMessage `json:"val"`
+		} `json:"onDemandUsed"`
+		IsUnifiedBillingUser *bool   `json:"isUnifiedBillingUser"`
+		BillingPeriodEnd     *string `json:"billingPeriodEnd"`
 	} `json:"config"`
 }
 
@@ -66,7 +75,14 @@ func (adapter *grokAdapter) ID() string {
 	return "grok"
 }
 
-func (adapter *grokAdapter) Models() []string {
+func (adapter *grokAdapter) ModelCatalog() harness.ModelCatalog {
+	return harness.ModelCatalog{
+		Models:    adapter.catalogModels(),
+		Authority: harness.ModelCatalogAuthoritative,
+	}
+}
+
+func (adapter *grokAdapter) catalogModels() []string {
 	ctx, cancel := context.WithTimeout(context.Background(), grokModelsTimeout)
 	defer cancel()
 
@@ -371,27 +387,110 @@ func (adapter *grokAdapter) readGrokCapacity(ctx context.Context, command string
 		return harness.UnknownCapacity(), err.Error()
 	}
 
+	return grokCapacityFromBilling(result)
+}
+
+func grokCapacityFromBilling(payload []byte) (harness.Capacity, string) {
 	var billing grokBilling
-	if err := json.Unmarshal(result, &billing); err != nil {
-		return harness.UnknownCapacity(), ""
-	}
-	if billing.Config.CreditUsagePercent == nil || billing.Config.CurrentPeriod.End == nil {
-		return harness.UnknownCapacity(), ""
-	}
-	if math.IsNaN(*billing.Config.CreditUsagePercent) || math.IsInf(*billing.Config.CreditUsagePercent, 0) {
-		return harness.UnknownCapacity(), ""
+	if err := json.Unmarshal(payload, &billing); err != nil {
+		return harness.UnknownCapacity(), fmt.Sprintf("Grok billing response was not valid JSON: %v", err)
 	}
 
-	resetsAt, err := time.Parse(time.RFC3339, *billing.Config.CurrentPeriod.End)
-	if err != nil {
-		return harness.UnknownCapacity(), ""
+	capValue, capDetail := grokBillingNumber(billing.Config.OnDemandCap.Value, "onDemandCap.val")
+	if capDetail != "" {
+		return harness.UnknownCapacity(), capDetail
+	}
+	if capValue != nil && *capValue < 0 {
+		return harness.UnknownCapacity(), "Grok billing field onDemandCap.val was negative."
+	}
+	if capValue != nil && *capValue > 0 {
+		usedValue, usedDetail := grokBillingNumber(billing.Config.OnDemandUsed.Value, "onDemandUsed.val")
+		if usedDetail != "" {
+			return harness.UnknownCapacity(), usedDetail
+		}
+		if usedValue == nil {
+			return harness.UnknownCapacity(), "Grok billing response was missing onDemandUsed.val for its positive on-demand cap."
+		}
+		if *usedValue < 0 {
+			return harness.UnknownCapacity(), "Grok billing field onDemandUsed.val was negative."
+		}
+
+		return grokMeasuredCapacity((*usedValue / *capValue)*100, billing)
 	}
 
-	return harness.KnownCapacity([]harness.Bucket{{
-		ID:          "credits",
-		UsedPercent: *billing.Config.CreditUsagePercent,
-		ResetsAt:    resetsAt,
-	}}), ""
+	unified := billing.Config.IsUnifiedBillingUser != nil && *billing.Config.IsUnifiedBillingUser
+	if capValue != nil && unified {
+		return harness.NoCapacityGauge(), "Grok unified billing has no on-demand cap, so subscription capacity has no gauge."
+	}
+
+	legacyValue, legacyDetail := grokBillingNumber(billing.Config.CreditUsagePercent, "creditUsagePercent")
+	if legacyDetail != "" {
+		return harness.UnknownCapacity(), legacyDetail
+	}
+	if legacyValue != nil {
+		return grokMeasuredCapacity(*legacyValue, billing)
+	}
+	if capValue != nil {
+		return harness.NoCapacityGauge(), "Grok billing has no on-demand cap, so subscription capacity has no gauge."
+	}
+
+	return harness.UnknownCapacity(), "Grok billing response was missing both creditUsagePercent and onDemandCap.val."
+}
+
+func grokBillingNumber(raw json.RawMessage, name string) (*float64, string) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, ""
+	}
+
+	var value float64
+	if err := json.Unmarshal(raw, &value); err != nil {
+		var encoded string
+		if stringErr := json.Unmarshal(raw, &encoded); stringErr != nil {
+			return nil, fmt.Sprintf("Grok billing field %s was not numeric.", name)
+		}
+		parsed, parseErr := strconv.ParseFloat(encoded, 64)
+		if parseErr != nil {
+			return nil, fmt.Sprintf("Grok billing field %s was not numeric.", name)
+		}
+		value = parsed
+	}
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return nil, fmt.Sprintf("Grok billing field %s was non-finite.", name)
+	}
+
+	return &value, ""
+}
+
+func grokMeasuredCapacity(usedPercent float64, billing grokBilling) (harness.Capacity, string) {
+	if math.IsNaN(usedPercent) || math.IsInf(usedPercent, 0) {
+		return harness.UnknownCapacity(), "Grok billing usage percentage was non-finite."
+	}
+	if usedPercent < 0 {
+		return harness.UnknownCapacity(), "Grok billing usage percentage was negative."
+	}
+
+	resetValues := make([]string, 0, 2)
+	if billing.Config.CurrentPeriod.End != nil {
+		resetValues = append(resetValues, *billing.Config.CurrentPeriod.End)
+	}
+	if billing.Config.BillingPeriodEnd != nil {
+		resetValues = append(resetValues, *billing.Config.BillingPeriodEnd)
+	}
+	if len(resetValues) == 0 {
+		return harness.UnknownCapacity(), "Grok billing response was missing currentPeriod.end and billingPeriodEnd."
+	}
+	for _, resetValue := range resetValues {
+		resetsAt, err := time.Parse(time.RFC3339, resetValue)
+		if err == nil {
+			return harness.KnownCapacity([]harness.Bucket{{
+				ID:          "credits",
+				UsedPercent: usedPercent,
+				ResetsAt:    resetsAt,
+			}}), ""
+		}
+	}
+
+	return harness.UnknownCapacity(), fmt.Sprintf("Grok billing reset timestamp %q was not RFC3339.", strings.Join(resetValues, ", "))
 }
 
 func grokInitializeRequest() rpcStep {

@@ -51,8 +51,8 @@ func (adapter *clineAdapter) ID() string {
 	return "cline"
 }
 
-func (adapter *clineAdapter) Models() []string {
-	return nil
+func (adapter *clineAdapter) ModelCatalog() harness.ModelCatalog {
+	return harness.ModelCatalog{Authority: harness.ModelCatalogAuthoritative}
 }
 
 func (adapter *clineAdapter) Detect(ctx context.Context) harness.Detection {
@@ -62,7 +62,7 @@ func (adapter *clineAdapter) Detect(ctx context.Context) harness.Detection {
 		return absentDetection()
 	}
 
-	return capacityDetection(path, adapter.ProbeCapacity(ctx), "", clineAuthenticationFailure)
+	return capacityDetection(path, adapter.ProbeCapacity(ctx), "Cline does not expose a capacity gauge.", clineAuthenticationFailure)
 }
 
 func (adapter *clineAdapter) Capabilities() harness.Capabilities {
@@ -165,7 +165,7 @@ func (adapter *clineAdapter) Finalize(_ context.Context, params harness.Finalize
 }
 
 func (adapter *clineAdapter) ProbeCapacity(context.Context) harness.Capacity {
-	return harness.UnknownCapacity()
+	return harness.NoCapacityGauge()
 }
 
 func (adapter *clineAdapter) SpawnPath() string {

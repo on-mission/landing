@@ -124,6 +124,16 @@ func TestResolveRouteCapacitySelection(t *testing.T) {
 			},
 			provider: "codex", model: "gpt-5.6-terra", score: 80,
 		},
+		{
+			name: "known capacity outranks no-gauge capacity",
+			tier: engineerTier(),
+			capacities: map[string]harness.Capacity{
+				"grok":   harness.NoCapacityGauge(),
+				"codex":  routingCapacity(routingBucket("codex", 20)),
+				"claude": harness.NoCapacityGauge(),
+			},
+			provider: "codex", model: "gpt-5.6-terra", score: 80,
+		},
 	}
 
 	for _, test := range tests {
@@ -158,7 +168,7 @@ func TestResolveRouteClineFallbackAndColdMarks(t *testing.T) {
 		"grok":   routingCapacity(routingBucket("credits", 81)),
 		"codex":  routingCapacity(routingBucket("codex", 99), routingBucket("codex_bengalfox", 80)),
 		"claude": routingCapacity(routingBucket("five_hour", 99), routingBucket("seven_day", 99)),
-		"cline":  harness.UnknownCapacity(),
+		"cline":  harness.NoCapacityGauge(),
 	}, routingNow)
 	if available.Provider != "codex" {
 		t.Fatalf("intern route with 21%% measured availability = %#v, want codex instead of cline", available)
@@ -168,7 +178,7 @@ func TestResolveRouteClineFallbackAndColdMarks(t *testing.T) {
 		"grok":   routingCapacity(routingBucket("credits", 81)),
 		"codex":  routingCapacity(routingBucket("codex", 99), routingBucket("codex_bengalfox", 81)),
 		"claude": routingCapacity(routingBucket("five_hour", 81), routingBucket("seven_day", 81)),
-		"cline":  harness.UnknownCapacity(),
+		"cline":  harness.NoCapacityGauge(),
 	}
 	route := ResolveRoute(tier, map[string]ColdMark{}, capacities, routingNow)
 	if route.Provider != "cline" || !strings.Contains(route.RoutedBecause, "intern fallback") {
@@ -207,6 +217,13 @@ func TestResolveRouteClineFallbackAndColdMarks(t *testing.T) {
 	}, routingNow)
 	if allUnknown.Provider != "grok" || !strings.Contains(allUnknown.RoutedBecause, "capacity was unreadable") {
 		t.Fatalf("all-unknown route = %#v, want declared first provider with unknown explanation", allUnknown)
+	}
+
+	allWithoutGauges := ResolveRoute(engineerTier(), map[string]ColdMark{}, map[string]harness.Capacity{
+		"grok": harness.NoCapacityGauge(), "codex": harness.NoCapacityGauge(), "claude": harness.NoCapacityGauge(),
+	}, routingNow)
+	if allWithoutGauges.Provider != "grok" || !strings.Contains(allWithoutGauges.RoutedBecause, "exposes no capacity gauge") || strings.Contains(allWithoutGauges.RoutedBecause, "unreadable") {
+		t.Fatalf("all-no-gauge route = %#v, want declared first provider with healthy unmeasured explanation", allWithoutGauges)
 	}
 }
 
@@ -281,7 +298,7 @@ func TestFallbackServesATierWhoseOrdinaryRoutesAreAllCold(t *testing.T) {
 		"grok":   routingCapacity(routingBucket("credits", 5)),
 		"codex":  routingCapacity(routingBucket("codex", 5), routingBucket("codex_bengalfox", 5)),
 		"claude": routingCapacity(routingBucket("five_hour", 5), routingBucket("seven_day", 5)),
-		"cline":  harness.UnknownCapacity(),
+		"cline":  harness.NoCapacityGauge(),
 	}
 	route := ResolveRoute(tier, map[string]ColdMark{
 		"grok":   {ExpiresAt: routingNow.Add(time.Minute)},

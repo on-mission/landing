@@ -32,11 +32,28 @@ const (
 	exitUsage              = 2
 )
 
-const help = `landing — dispatch work through a configured tier.
+const modelListHelp = `landing model list — list known model routes and catalog authority.
+
+USAGE
+  landing model list
+
+Each row is a known route in the harness/model form --model takes, the
+harness's observed state, catalog authority, and the tiers that configure it.
+An advisory catalog may be incomplete: Landing passes a valid unlisted model to
+that harness, which decides whether it can run it. Detection runs; capacity is
+not probed. Use ` + "`landing harness list`" + ` for measured availability.
+
+OPTIONS
+  --json                        JSON output.
+  --help, -h                    Help.
+`
+
+const help = `landing — dispatch work through a configured tier or a named route.
 
 USAGE
   landing "<prompt>"
   landing --tier <name> "<prompt>"
+  landing --model <harness>/<model> "<prompt>"
   landing --reply <id> "<prompt>"
   landing meeting --arbiter <name> --persona <name> --persona <name> "<question>"
   landing comms [--inbox | --history | --agent <name> --message <text>]
@@ -45,6 +62,7 @@ USAGE
   landing config init | show
   landing tier list | add | update | remove
   landing harness list
+  landing model list
   landing persona list | show | add | update | remove
 
 INPUT
@@ -53,6 +71,7 @@ INPUT
 
 OPTIONS
   --tier <name>                 Tier for a dispatch.
+  --model <harness>/<model>     Route for a dispatch, in place of a tier.
   --reply <id>                  Continue an existing thread.
   --persona <name>              Persona for a dispatch.
   --arbiter <name>              Persona that reads a meeting round.
@@ -439,6 +458,8 @@ func managementHelp(command command) string {
 		return tierRemoveHelp
 	case commandHarnessList:
 		return harnessListHelp
+	case commandModelList:
+		return modelListHelp
 	case commandPersonaList:
 		return personaListHelp
 	case commandPersonaShow:
@@ -458,7 +479,7 @@ func managementCommandOptions(values options, command command) error {
 	switch command {
 	case commandConfigInit:
 		return unexpectedOptions(values, string(command))
-	case commandConfigShow, commandTierList, commandHarnessList, commandPersonaList:
+	case commandConfigShow, commandTierList, commandHarnessList, commandModelList, commandPersonaList:
 		return unexpectedOptions(values, string(command), "json")
 	case commandTierAdd, commandTierUpdate:
 		return unexpectedOptions(values, string(command), "name", "description", "route", "fallback-below", "default")

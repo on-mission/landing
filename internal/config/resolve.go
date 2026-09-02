@@ -280,6 +280,16 @@ func validatePolicy(config Config) []string {
 		if len(tier.Routes) == 0 {
 			problems = append(problems, fmt.Sprintf("tier %q field \"routes\" has zero routes", tier.Name))
 		}
+		for index, route := range tier.Routes {
+			if route.Model != nil && !validModelName(*route.Model) {
+				problems = append(problems, fmt.Sprintf(
+					"tier %q route %d field \"model\" has invalid value %q",
+					tier.Name,
+					index,
+					*route.Model,
+				))
+			}
+		}
 	}
 
 	return problems
@@ -307,8 +317,8 @@ func validateHarnesses(config Config, harnesses Harnesses) []string {
 			if route.Model == nil {
 				continue
 			}
-			supportedModels := harnesses.Models(route.Harness)
-			if modelSupported(*route.Model, supportedModels) {
+			catalog := harnesses.ModelCatalog(route.Harness)
+			if catalog.Supports(*route.Model) {
 				continue
 			}
 			problems = append(problems, fmt.Sprintf(
@@ -317,7 +327,7 @@ func validateHarnesses(config Config, harnesses Harnesses) []string {
 				index,
 				*route.Model,
 				route.Harness,
-				formatModels(supportedModels),
+				formatModels(catalog.Models),
 			))
 		}
 	}
@@ -325,14 +335,8 @@ func validateHarnesses(config Config, harnesses Harnesses) []string {
 	return problems
 }
 
-func modelSupported(model string, supported []string) bool {
-	for _, candidate := range supported {
-		if model == candidate {
-			return true
-		}
-	}
-
-	return false
+func validModelName(model string) bool {
+	return model != "" && !strings.Contains(model, "/")
 }
 
 func formatModels(models []string) string {

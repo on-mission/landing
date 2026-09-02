@@ -49,6 +49,7 @@ func TestManagementCommand(t *testing.T) {
 		{name: "tier update", args: []string{"tier", "update"}, want: commandTierUpdate, wantMatch: true},
 		{name: "tier remove", args: []string{"tier", "remove"}, want: commandTierRemove, wantMatch: true},
 		{name: "harness list", args: []string{"harness", "list"}, want: commandHarnessList, wantMatch: true},
+		{name: "model list", args: []string{"model", "list"}, want: commandModelList, wantMatch: true},
 		{name: "persona list", args: []string{"persona", "list"}, want: commandPersonaList, wantMatch: true},
 		{name: "persona show", args: []string{"persona", "show"}, want: commandPersonaShow, wantMatch: true},
 		{name: "persona add", args: []string{"persona", "add"}, want: commandPersonaAdd, wantMatch: true},
@@ -249,18 +250,18 @@ func TestTierUpdateAppliesOnlySuppliedFields(t *testing.T) {
 	}
 }
 
-func TestTierAddNamesSupportedModels(t *testing.T) {
+func TestTierAddRejectsModelsOutsideAnAuthoritativeCatalog(t *testing.T) {
 	directory := t.TempDir()
 	t.Setenv("LANDING_STATE_DIR", filepath.Join(t.TempDir(), "state"))
 	if code, err, _, _ := runCLI(t, directory, []string{"config", "init"}); err != nil || code != exitOK {
 		t.Fatalf("Run(config init) = %d, %v; want %d, nil", code, err, exitOK)
 	}
-	code, err, _, _ := runCLI(t, directory, []string{"tier", "add", "--name", "bad", "--route", "codex/gpt-9"})
+	code, err, _, _ := runCLI(t, directory, []string{"tier", "add", "--name", "bad", "--route", "grok/grok-unknown"})
 	if code != exitUsage {
-		t.Fatalf("Run(tier add unsupported model) code = %d, want %d", code, exitUsage)
+		t.Fatalf("Run(tier add unknown authoritative model) code = %d, want %d", code, exitUsage)
 	}
-	if err == nil || !strings.Contains(err.Error(), "supported models are") || !strings.Contains(err.Error(), "gpt-5.6-terra") {
-		t.Fatalf("Run(tier add unsupported model) error = %v, want supported codex models", err)
+	if err == nil || !strings.Contains(err.Error(), "supported models are") || !strings.Contains(err.Error(), "grok-4.6") {
+		t.Fatalf("Run(tier add unknown authoritative model) error = %v, want supported Grok models", err)
 	}
 }
 
@@ -270,6 +271,7 @@ func TestHarnessReportDistinguishesDetectionStates(t *testing.T) {
 		{Name: "unauthenticated", Status: harness.DetectionUnauthenticated, Capacity: capacityReport{}, Detail: "authentication failed"},
 		{Name: "unreadable", Status: harness.DetectionUnreadable, Capacity: capacityReport{}, Detail: "capacity response was unreadable"},
 		{Name: "ready", Status: harness.DetectionReady, Capacity: capacityReport{Known: true}},
+		{Name: "unmetered", Status: harness.DetectionReady, Capacity: capacityReport{NoGauge: true}, Detail: "capacity gauge is not exposed"},
 	}
 	output := &bytes.Buffer{}
 	if code, err := writeHarnessReports(reports, output); err != nil || code != exitOK {
@@ -282,6 +284,9 @@ func TestHarnessReportDistinguishesDetectionStates(t *testing.T) {
 	}
 	if strings.Contains(output.String(), "unreadable: unauthenticated") {
 		t.Fatalf("writeHarnessReports() output = %q, unreadable was rendered as unauthenticated", output.String())
+	}
+	if !strings.Contains(output.String(), "unmetered: ready\n  capacity: no gauge") {
+		t.Fatalf("writeHarnessReports() output = %q, want ready harness with no gauge", output.String())
 	}
 }
 

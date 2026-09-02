@@ -208,8 +208,8 @@ func (adapter *personaDispatchAdapter) ID() string {
 	return "recording"
 }
 
-func (adapter *personaDispatchAdapter) Models() []string {
-	return nil
+func (adapter *personaDispatchAdapter) ModelCatalog() harness.ModelCatalog {
+	return harness.ModelCatalog{Authority: harness.ModelCatalogAuthoritative}
 }
 
 func (adapter *personaDispatchAdapter) Detect(context.Context) harness.Detection {

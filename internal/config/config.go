@@ -73,16 +73,16 @@ import (
 // from that opinion would make a supported harness unconfigurable merely
 // because no default tier happened to mention it.
 //
-// Each harness module owns how it answers Models — by asking the harness, by
-// calling an API, or by holding a literal list — and that choice never reaches
-// this package.
+// Each harness module owns how it obtains its catalog and whether that catalog
+// is authoritative. Configuration keeps the early error from a complete
+// catalog, while passing an unknown advisory model through to its harness.
 type Harnesses interface {
 	// IDs are the harness identifiers this build supports.
 	IDs() []string
 
-	// Models are the models the named harness can route to. An unknown
-	// harness returns nothing.
-	Models(harness string) []string
+	// ModelCatalog returns model information for the named harness. An unknown
+	// harness returns an empty authoritative catalog.
+	ModelCatalog(id string) harness.ModelCatalog
 }
 
 // AdapterRegistry resolves the adapters linked into this build.
@@ -108,13 +108,13 @@ func (harnesses registryHarnesses) IDs() []string {
 	return harnesses.registry.IDs()
 }
 
-func (harnesses registryHarnesses) Models(id string) []string {
+func (harnesses registryHarnesses) ModelCatalog(id string) harness.ModelCatalog {
 	adapter, err := harnesses.registry.Resolve(id)
 	if err != nil {
-		return nil
+		return harness.ModelCatalog{Authority: harness.ModelCatalogAuthoritative}
 	}
 
-	return adapter.Models()
+	return adapter.ModelCatalog()
 }
 
 // ConfigFileName is the project configuration file Landing searches upward for.
@@ -151,6 +151,16 @@ type Route struct {
 	// every ordinary route had failed would resolve to nothing while holding
 	// an eligible safety valve in reserve.
 	FallbackBelowPercent *float64
+}
+
+// String renders a route the way a caller writes one on --route or --model, so
+// configuration, diagnostics, and a recorded job all name a route identically.
+func (route Route) String() string {
+	if route.Model == nil || *route.Model == "" {
+		return route.Harness
+	}
+
+	return route.Harness + "/" + *route.Model
 }
 
 // Tier is a named class of work and the policy for executing it.

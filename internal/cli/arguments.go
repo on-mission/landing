@@ -32,6 +32,7 @@ type suppliedOption struct {
 
 type options struct {
 	Tier             parsedOption
+	Model            *routeOption
 	Reply            parsedOption
 	Persona          parsedOption
 	Personas         []string
@@ -90,7 +91,7 @@ func parseArguments(args []string) (options, []string, error) {
 					return options{}, nil, unknownOption(argument)
 				}
 				setBooleanOption(&values, name)
-			case "tier", "reply", "persona", "arbiter", "cast", "cwd", "label", "timeout", "prompt-file", "instructions-file", "name", "description", "route", "fallback-below", "agent", "message", "max-wait", "as", "harness", "event":
+			case "tier", "model", "reply", "persona", "arbiter", "cast", "cwd", "label", "timeout", "prompt-file", "instructions-file", "name", "description", "route", "fallback-below", "agent", "message", "max-wait", "as", "harness", "event":
 				value, nextIndex, err := optionValue(args, index, name, inlineValue, hasInlineValue)
 				if err != nil {
 					return options{}, nil, err
@@ -152,6 +153,15 @@ func setOption(values *options, name string, value string) error {
 	switch name {
 	case "tier":
 		values.Tier = option
+	case "model":
+		if values.Model != nil {
+			return &usageError{message: "--model is present more than once"}
+		}
+		route, err := parseModelRoute(value)
+		if err != nil {
+			return err
+		}
+		values.Model = &route
 	case "reply":
 		values.Reply = option
 	case "persona":
@@ -282,6 +292,19 @@ func parseRoute(value string) (routeOption, error) {
 	}
 
 	return routeOption{Harness: harness, Model: &model}, nil
+}
+
+// parseModelRoute parses a dispatch's --model value. Unlike a tier route it
+// requires a model: --model exists so a caller can name one execution path
+// exactly, and a bare harness would hand the model choice back to the
+// harness's own default — the selection this option is for taking back.
+func parseModelRoute(value string) (routeOption, error) {
+	harnessName, model, hasModel := strings.Cut(value, "/")
+	if harnessName == "" || !hasModel || model == "" || strings.Contains(model, "/") {
+		return routeOption{}, &usageError{message: fmt.Sprintf("--model has invalid value %q; expected harness/model", value)}
+	}
+
+	return routeOption{Harness: harnessName, Model: &model}, nil
 }
 
 func unknownOption(argument string) error {

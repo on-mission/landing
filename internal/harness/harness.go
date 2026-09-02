@@ -12,6 +12,7 @@ type CapacityState uint8
 
 const (
 	CapacityUnknown CapacityState = iota
+	CapacityNoGauge
 	CapacityKnown
 )
 
@@ -30,12 +31,20 @@ func UnknownCapacity() Capacity {
 	return Capacity{state: CapacityUnknown}
 }
 
+func NoCapacityGauge() Capacity {
+	return Capacity{state: CapacityNoGauge}
+}
+
 func KnownCapacity(buckets []Bucket) Capacity {
 	return Capacity{state: CapacityKnown, buckets: append([]Bucket(nil), buckets...)}
 }
 
 func (capacity Capacity) IsKnown() bool {
 	return capacity.state == CapacityKnown
+}
+
+func (capacity Capacity) HasGauge() bool {
+	return capacity.state != CapacityNoGauge
 }
 
 func (capacity Capacity) Buckets() []Bucket {
@@ -185,12 +194,12 @@ const (
 	// itself — it reported an authentication failure, rather than Landing
 	// inferring one from silence.
 	DetectionUnauthenticated DetectionStatus = "unauthenticated"
-	// DetectionUnreadable means the harness is installed and did not report an
-	// authentication failure, but its capacity could not be read. Landing does
-	// not resolve this into a claim about authentication, because it does not
-	// know which of the two it is.
+	// DetectionUnreadable means the harness is installed and exposes a capacity
+	// gauge, but the gauge could not be read. Landing does not resolve this into
+	// a claim about authentication unless the harness reported one.
 	DetectionUnreadable DetectionStatus = "unreadable"
-	// DetectionReady means the harness answered with a capacity reading.
+	// DetectionReady means the installed harness is usable. Capacity may be
+	// measured or explicitly have no gauge.
 	DetectionReady DetectionStatus = "ready"
 )
 
@@ -206,7 +215,8 @@ type Detection struct {
 	// Path is the resolved executable, empty when Status is DetectionAbsent.
 	Path string
 
-	// Capacity is the reading behind DetectionReady, and unknown otherwise.
+	// Capacity is measured or explicitly has no gauge for DetectionReady, and is
+	// unknown otherwise.
 	Capacity Capacity
 
 	// Detail is observed state worth reporting — the harness's own words when
@@ -214,13 +224,46 @@ type Detection struct {
 	Detail string
 }
 
+// ModelCatalogAuthority states whether the harness supplied a complete model
+// catalog or only useful known names.
+type ModelCatalogAuthority string
+
+const (
+	ModelCatalogAuthoritative ModelCatalogAuthority = "authoritative"
+	ModelCatalogAdvisory      ModelCatalogAuthority = "advisory"
+)
+
+// ModelCatalog is the model information a harness can report without implying
+// that every known name is a complete catalog.
+type ModelCatalog struct {
+	Models    []string
+	Authority ModelCatalogAuthority
+}
+
+// Supports reports whether Landing can reject a requested model before the
+// harness runs. An advisory catalog deliberately leaves that decision to the
+// harness, which is the only authority for models it cannot enumerate.
+func (catalog ModelCatalog) Supports(model string) bool {
+	if catalog.Authority == ModelCatalogAdvisory {
+		return true
+	}
+
+	for _, candidate := range catalog.Models {
+		if model == candidate {
+			return true
+		}
+	}
+
+	return false
+}
+
 type Adapter interface {
 	ID() string
 
-	// Models are the models Landing can route to through this harness. It is
-	// deliberately what Landing supports rather than everything the provider
-	// sells: a model Landing cannot reach is not a choice a caller can make.
-	Models() []string
+	// ModelCatalog reports known models and whether the catalog is exhaustive.
+	// An advisory catalog passes a syntactically valid unknown model to the
+	// harness, which remains the authority for accepting it.
+	ModelCatalog() ModelCatalog
 
 	// Detect reports whether this harness is usable on this machine. It must
 	// not spend execution capacity.
