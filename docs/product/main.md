@@ -102,9 +102,9 @@ administrative; users do not need to babysit a scheduler to complete work.
 
 A user describes the desired project policy to their coding agent. The agent
 asks Landing for supported installed harnesses, authentication readiness,
-remaining capacity, and models Landing can route to, then asks Landing to write
-the complete validated configuration. Landing reports only routable options and
-rejects an unsupported route with the options it can use.
+remaining capacity, and known model options, then asks Landing to write the
+complete validated configuration. Landing marks a non-exhaustive model list so
+an agent can name a newly available model without waiting for Landing to update.
 
 Direct configuration authoring remains supported and Landing validates it when
 read. Agent-driven configuration makes the configuration Landing writes
@@ -132,6 +132,10 @@ routes that Landing chooses among in preference order.
 It is not a persona or profession. A configuration can identify one tier as the
 default for unnamed work. Without a default, the caller names a configured tier;
 Landing does not choose one.
+
+When the model itself is the request, a caller names the route instead of a
+tier, and Landing reports the routes available to name. This stays the
+exception: a tier is what lets Landing answer to availability.
 
 ### Invoke work
 
@@ -196,6 +200,9 @@ and return a different kind of result, so they remain an optional workflow.
 Landing chooses among the routes in the requested tier using known capability,
 availability, preference, and failure state. Quality, latency, cost, and context
 requirements are valid policy inputs as the product can measure them honestly.
+
+A request that names its own route skips this selection. Landing runs that route
+or reports why it cannot, and never substitutes another.
 
 ### Bounded recovery
 

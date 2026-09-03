@@ -71,7 +71,8 @@ As a user, I want to group detected connections and models into tiers so that
 routing reflects the execution needs and available choices in my project.
 
 A route outside a tier is not prohibited; Landing simply does not choose among
-it for work requested through that tier.
+it for work requested through that tier, and a caller can still name it for one
+request.
 
 ### Accept a neutral default policy
 
@@ -164,6 +165,30 @@ The delegated worker receives bounded responsibility; the lead agent retains
 responsibility for reviewing and integrating the result. These responsibilities
 do not assume that one agent is larger, smaller, more senior, or tied to a
 particular model.
+
+### Name the route for this work
+
+As a user or lead agent, I want to name the harness and model for one request so
+that work whose point is a particular model runs on it.
+
+Landing runs the named route without ranking it against alternatives and without
+falling back, because substituting another model would discard the reason I
+named this one. I can name any route my machine can reach, whether or not my
+project's tiers use it, and I do not have to add a tier to make one request. If
+the route cannot run the work, I get a failure that says so. When the harness
+can enumerate models, Landing catches an unknown name before work starts;
+otherwise the harness remains the authority for that decision.
+
+### See the routes I can name
+
+As a user or lead agent, I want to see the routes available to me, written the
+way I would name them, so that I can choose one without guessing.
+
+The report covers known model options and what my project configures, and says
+which tiers use each route, so I can tell an established choice from an unused
+one. It marks a non-exhaustive model list, so I know when the harness may accept
+a model that Landing cannot list. It answers before my project has any policy,
+and reading it does not spend capacity.
 
 ### Use current availability
 

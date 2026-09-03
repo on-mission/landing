@@ -25,10 +25,13 @@ create or change the configuration. Landing validates every supplied route and
 writes the configuration itself.
 
 Landing reports the supported harnesses installed on the machine, their
-authentication readiness, their remaining capacity, and the models reachable
-through each harness. It reports only routes that Landing can use, so the agent
-can compose a policy from real choices. If the agent supplies an unsupported
-harness or model, Landing fails clearly and reports the routable choices.
+authentication readiness, their remaining capacity, and the models each can
+authoritatively enumerate or otherwise names as useful examples. It marks an
+example list as incomplete, so the agent does not mistake it for a closed
+provider catalog. If the agent supplies an unsupported harness, Landing fails
+clearly. An unknown model is rejected before writing only when its harness can
+authoritatively enumerate models; otherwise the harness reports any error when
+the route runs.
 
 Configuration-management requests accept the complete policy an agent needs to
 express: route lists, their preference order, and detailed tier descriptions.
@@ -88,9 +91,10 @@ a route, model, harness, or tier.
 ### 4. Validate and apply
 
 Landing validates the complete requested policy before writing it. A request
-that names an unavailable route fails with the routes Landing can use; it does
-not create a configuration that cannot route the requested work. Landing writes
-the project configuration inside `.landing/`. Agents discover the current policy
+that names an unavailable harness, or a model outside an authoritative catalog,
+fails clearly. A model from an incomplete catalog remains a valid policy choice
+and the harness reports any rejection when that route runs. Landing writes the
+project configuration inside `.landing/`. Agents discover the current policy
 from that project-owned context without Landing writing into unrelated
 instructions.
 

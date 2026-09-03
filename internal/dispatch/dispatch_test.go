@@ -98,7 +98,9 @@ type conversationLifecycleAdapter struct{}
 
 func (conversationLifecycleAdapter) ID() string { return "fake" }
 
-func (conversationLifecycleAdapter) Models() []string { return nil }
+func (conversationLifecycleAdapter) ModelCatalog() harness.ModelCatalog {
+	return harness.ModelCatalog{Authority: harness.ModelCatalogAuthoritative}
+}
 
 func (conversationLifecycleAdapter) Detect(context.Context) harness.Detection {
 	return harness.Detection{Status: harness.DetectionAbsent, Capacity: harness.UnknownCapacity()}

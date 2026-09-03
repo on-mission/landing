@@ -27,8 +27,19 @@ func (harnesses staticHarnesses) IDs() []string {
 	return ids
 }
 
-func (harnesses staticHarnesses) Models(id string) []string {
-	return append([]string(nil), harnesses[id]...)
+func (harnesses staticHarnesses) ModelCatalog(id string) harness.ModelCatalog {
+	return harness.ModelCatalog{Models: append([]string(nil), harnesses[id]...), Authority: harness.ModelCatalogAuthoritative}
+}
+
+type advisoryHarnesses struct {
+	staticHarnesses
+}
+
+func (harnesses advisoryHarnesses) ModelCatalog(id string) harness.ModelCatalog {
+	catalog := harnesses.staticHarnesses.ModelCatalog(id)
+	catalog.Authority = harness.ModelCatalogAdvisory
+
+	return catalog
 }
 
 var testHarnesses = staticHarnesses{
@@ -290,6 +301,8 @@ func TestLoad(t *testing.T) {
 	}
 }
 
+// This catches configuration rejecting a newly released model solely because
+// Landing's known-model examples are stale.
 func TestLoadValidatesHarnessModels(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -312,6 +325,11 @@ func TestLoadValidatesHarnessModels(t *testing.T) {
 			harnesses: testHarnesses,
 			contents:  `{"version":1,"tiers":{"custom":{"routes":[{"harness":"grok","model":"grok-unknown"}]}}}`,
 			wantError: `configuration file %s is invalid: tier "custom" route 0 field "model" has unsupported value "grok-unknown" for harness "grok"; supported models are "grok-4.6", "grok-4.5"`,
+		},
+		{
+			name:      "accepts an unlisted model from an advisory catalog",
+			harnesses: advisoryHarnesses{staticHarnesses: testHarnesses},
+			contents:  `{"version":1,"tiers":{"custom":{"routes":[{"harness":"codex","model":"gpt-5.6-sol"}]}}}`,
 		},
 	}
 

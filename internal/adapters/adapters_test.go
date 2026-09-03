@@ -316,6 +316,94 @@ func TestCapacityBucketParsers(t *testing.T) {
 	}
 }
 
+// This catches a provider schema migration turning an uncapped subscription into fabricated 0% usage or an unreadable harness.
+func TestGrokUnifiedBillingWithoutOnDemandCapHasNoGauge(t *testing.T) {
+	payload, err := os.ReadFile(filepath.Join("testdata", "grok-billing-unified.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	capacity, detail := grokCapacityFromBilling(payload)
+	if capacity.IsKnown() || capacity.HasGauge() {
+		t.Fatalf("grokCapacityFromBilling() = %#v, %q; want a healthy no-gauge capacity", capacity, detail)
+	}
+	if !strings.Contains(detail, "subscription capacity has no gauge") {
+		t.Fatalf("grokCapacityFromBilling() detail = %q, want the absent gauge explained", detail)
+	}
+}
+
+// This catches ratio, reset, and legacy compatibility regressions at the Grok billing boundary.
+func TestGrokBillingComputesOnlyMeasuredUsage(t *testing.T) {
+	tests := []struct {
+		name        string
+		payload     string
+		usedPercent float64
+	}{
+		{
+			name:        "positive on-demand cap",
+			payload:     `{"config":{"currentPeriod":{"end":"2026-09-04T00:23:26.632098+00:00"},"onDemandCap":{"val":200},"onDemandUsed":{"val":50},"isUnifiedBillingUser":true}}`,
+			usedPercent: 25,
+		},
+		{
+			name:        "legacy credit percentage",
+			payload:     `{"config":{"currentPeriod":{"end":"2026-09-04T00:23:26.632098+00:00"},"creditUsagePercent":37.5}}`,
+			usedPercent: 37.5,
+		},
+		{
+			name:        "billing period reset fallback",
+			payload:     `{"config":{"currentPeriod":{"end":"weekly"},"billingPeriodEnd":"2026-09-04T00:23:26.632098+00:00","creditUsagePercent":"12"}}`,
+			usedPercent: 12,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			capacity, detail := grokCapacityFromBilling([]byte(test.payload))
+			buckets := capacity.Buckets()
+			if detail != "" || !capacity.IsKnown() || len(buckets) != 1 || buckets[0].UsedPercent != test.usedPercent {
+				t.Fatalf("grokCapacityFromBilling() = %#v, %q; want %.2f%% measured usage", capacity, detail, test.usedPercent)
+			}
+		})
+	}
+}
+
+// This catches silent diagnostic loss when a Grok gauge exists but its payload cannot be trusted.
+func TestGrokBillingFailuresExplainWhyCapacityIsUnreadable(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+		detail  string
+	}{
+		{
+			name:    "missing measurement fields",
+			payload: `{"config":{"currentPeriod":{"end":"2026-09-04T00:23:26Z"}}}`,
+			detail:  "missing both creditUsagePercent and onDemandCap.val",
+		},
+		{
+			name:    "non-finite measurement",
+			payload: `{"config":{"creditUsagePercent":"NaN","currentPeriod":{"end":"2026-09-04T00:23:26Z"}}}`,
+			detail:  "creditUsagePercent was non-finite",
+		},
+		{
+			name:    "unparseable reset",
+			payload: `{"config":{"creditUsagePercent":12,"currentPeriod":{"end":"next Thursday"}}}`,
+			detail:  "was not RFC3339",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			capacity, detail := grokCapacityFromBilling([]byte(test.payload))
+			if capacity.IsKnown() || !capacity.HasGauge() {
+				t.Fatalf("grokCapacityFromBilling() capacity = %#v, want unreadable gauge", capacity)
+			}
+			if !strings.Contains(detail, test.detail) {
+				t.Fatalf("grokCapacityFromBilling() detail = %q, want %q", detail, test.detail)
+			}
+		})
+	}
+}
+
 func TestDetectionClassifiesObservedCapacity(t *testing.T) {
 	codexPayload, err := os.ReadFile(filepath.Join("testdata", "codex-rate-limits.json"))
 	if err != nil {
@@ -327,34 +415,48 @@ func TestDetectionClassifiesObservedCapacity(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
-		detect   harness.Detection
-		status   harness.DetectionStatus
-		wantPath string
+		name      string
+		detect    harness.Detection
+		status    harness.DetectionStatus
+		wantPath  string
+		wantKnown bool
+		wantGauge bool
 	}{
 		{
-			name:     "reports absent when no executable resolved",
-			detect:   absentDetection(),
-			status:   harness.DetectionAbsent,
-			wantPath: "",
+			name:      "reports absent when no executable resolved",
+			detect:    absentDetection(),
+			status:    harness.DetectionAbsent,
+			wantPath:  "",
+			wantGauge: true,
 		},
 		{
-			name:     "reports ready for recorded capacity",
-			detect:   capacityDetection("/recorded/bin/codex", codexCapacityFromResult(codexPayload), "", codexAuthenticationFailure),
-			status:   harness.DetectionReady,
-			wantPath: "/recorded/bin/codex",
+			name:      "reports ready for recorded capacity",
+			detect:    capacityDetection("/recorded/bin/codex", codexCapacityFromResult(codexPayload), "", codexAuthenticationFailure),
+			status:    harness.DetectionReady,
+			wantPath:  "/recorded/bin/codex",
+			wantKnown: true,
+			wantGauge: true,
 		},
 		{
-			name:     "reports only the harness authentication failure it observed",
-			detect:   capacityDetection("/recorded/bin/grok", harness.UnknownCapacity(), string(grokAuthentication), grokAuthenticationFailure),
-			status:   harness.DetectionUnauthenticated,
-			wantPath: "/recorded/bin/grok",
+			name:      "reports ready when the harness has no gauge",
+			detect:    capacityDetection("/recorded/bin/cline", harness.NoCapacityGauge(), "Cline does not expose a capacity gauge.", clineAuthenticationFailure),
+			status:    harness.DetectionReady,
+			wantPath:  "/recorded/bin/cline",
+			wantGauge: false,
 		},
 		{
-			name:     "reports unreadable for an empty capacity response",
-			detect:   capacityDetection("/recorded/bin/claude", harness.UnknownCapacity(), "", claudeAuthenticationFailure),
-			status:   harness.DetectionUnreadable,
-			wantPath: "/recorded/bin/claude",
+			name:      "reports only the harness authentication failure it observed",
+			detect:    capacityDetection("/recorded/bin/grok", harness.UnknownCapacity(), string(grokAuthentication), grokAuthenticationFailure),
+			status:    harness.DetectionUnauthenticated,
+			wantPath:  "/recorded/bin/grok",
+			wantGauge: true,
+		},
+		{
+			name:      "reports unreadable for an empty capacity response",
+			detect:    capacityDetection("/recorded/bin/claude", harness.UnknownCapacity(), "", claudeAuthenticationFailure),
+			status:    harness.DetectionUnreadable,
+			wantPath:  "/recorded/bin/claude",
+			wantGauge: true,
 		},
 	}
 
@@ -363,11 +465,11 @@ func TestDetectionClassifiesObservedCapacity(t *testing.T) {
 			if test.detect.Status != test.status || test.detect.Path != test.wantPath {
 				t.Fatalf("capacityDetection() = %#v, want status %q and path %q", test.detect, test.status, test.wantPath)
 			}
-			if test.status == harness.DetectionReady && !test.detect.Capacity.IsKnown() {
-				t.Fatalf("capacityDetection() capacity = %#v, want known capacity", test.detect.Capacity)
+			if test.detect.Capacity.IsKnown() != test.wantKnown {
+				t.Fatalf("capacityDetection() capacity = %#v, want known=%t", test.detect.Capacity, test.wantKnown)
 			}
-			if test.status != harness.DetectionReady && test.detect.Capacity.IsKnown() {
-				t.Fatalf("capacityDetection() capacity = %#v, want unknown capacity", test.detect.Capacity)
+			if test.detect.Capacity.HasGauge() != test.wantGauge {
+				t.Fatalf("capacityDetection() capacity = %#v, want gauge=%t", test.detect.Capacity, test.wantGauge)
 			}
 		})
 	}
@@ -390,30 +492,35 @@ func TestAdapterModelsAreModuleOwned(t *testing.T) {
 	// grok, whose catalog is parsed from harness output, is matched exactly,
 	// because there the exact list IS the behavior under test.
 	tests := []struct {
-		name     string
-		adapter  harness.Adapter
-		contains []string
-		exact    []string
+		name      string
+		adapter   harness.Adapter
+		contains  []string
+		exact     []string
+		authority harness.ModelCatalogAuthority
 	}{
-		{name: "codex literal catalog", adapter: NewCodex(), contains: []string{"gpt-5.6-terra", "gpt-5.3-codex-spark", "gpt-5.6-luna"}},
-		{name: "claude literal catalog", adapter: NewClaude(), contains: []string{"claude-sonnet-5", "claude-haiku-4-5-20251001"}},
-		{name: "grok live listing catalog", adapter: grok, exact: []string{"grok-4.6", "grok-4.5"}},
-		{name: "cline no model catalog", adapter: NewCline(), exact: nil},
+		{name: "codex advisory catalog", adapter: NewCodex(), contains: []string{"gpt-5.6-terra", "gpt-5.3-codex-spark", "gpt-5.6-luna"}, authority: harness.ModelCatalogAdvisory},
+		{name: "claude advisory catalog", adapter: NewClaude(), contains: []string{"claude-sonnet-5", "claude-haiku-4-5-20251001"}, authority: harness.ModelCatalogAdvisory},
+		{name: "grok live listing catalog", adapter: grok, exact: []string{"grok-4.6", "grok-4.5"}, authority: harness.ModelCatalogAuthoritative},
+		{name: "cline no model catalog", adapter: NewCline(), exact: nil, authority: harness.ModelCatalogAuthoritative},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := test.adapter.Models()
+			catalog := test.adapter.ModelCatalog()
+			if catalog.Authority != test.authority {
+				t.Fatalf("%s.ModelCatalog().Authority = %q, want %q", test.adapter.ID(), catalog.Authority, test.authority)
+			}
+			got := catalog.Models
 			if test.contains != nil {
 				for _, model := range test.contains {
 					if !slices.Contains(got, model) {
-						t.Fatalf("%s.Models() = %#v, want it to contain %q", test.adapter.ID(), got, model)
+						t.Fatalf("%s.ModelCatalog().Models = %#v, want it to contain %q", test.adapter.ID(), got, model)
 					}
 				}
 				return
 			}
 			if !slices.Equal(got, test.exact) {
-				t.Fatalf("%s.Models() = %#v, want %#v", test.adapter.ID(), got, test.exact)
+				t.Fatalf("%s.ModelCatalog().Models = %#v, want %#v", test.adapter.ID(), got, test.exact)
 			}
 		})
 	}
@@ -427,8 +534,8 @@ func TestGrokModelsFallsBackWhenListingFails(t *testing.T) {
 		},
 	}
 
-	if got := adapter.Models(); !slices.Equal(got, []string{"grok-4.6", "grok-4.5"}) {
-		t.Fatalf("Models() = %#v, want fallback models", got)
+	if got := adapter.ModelCatalog().Models; !slices.Equal(got, []string{"grok-4.6", "grok-4.5"}) {
+		t.Fatalf("ModelCatalog().Models = %#v, want fallback models", got)
 	}
 }
 
@@ -446,10 +553,33 @@ func TestGrokModelsCachesLiveListing(t *testing.T) {
 		},
 	}
 
-	adapter.Models()
-	adapter.Models()
+	adapter.ModelCatalog()
+	adapter.ModelCatalog()
 	if reads != 1 {
-		t.Fatalf("Models() read grok models %d times, want 1 cached read", reads)
+		t.Fatalf("ModelCatalog() read grok models %d times, want 1 cached read", reads)
+	}
+}
+
+// This catches a locally configured Codex default being hidden from catalog
+// output, which would make a usable route needlessly undiscoverable.
+func TestCodexModelCatalogIncludesConfiguredModel(t *testing.T) {
+	home := t.TempDir()
+	// os.UserHomeDir reads HOME on unix and USERPROFILE on Windows, and this
+	// suite runs on both. Setting only one leaves the other platform reading
+	// the real home directory, where this test's config file does not exist.
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	configDirectory := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(configDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDirectory, "config.toml"), []byte("model = \"gpt-5.6-sol\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	catalog := (&codexAdapter{}).ModelCatalog()
+	if !slices.Contains(catalog.Models, "gpt-5.6-sol") {
+		t.Fatalf("ModelCatalog().Models = %#v, want configured model", catalog.Models)
 	}
 }
 

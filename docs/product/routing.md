@@ -6,11 +6,14 @@ summary: The user-facing policy for route selection, persona guarantees, availab
 # Routing
 
 Routing is a product policy: the caller names the kind of work, and Landing
-chooses a route from that tier.
+chooses a route from that tier. When the model is the point of the request
+rather than a detail of it, the caller names the route instead, and Landing runs
+it.
 
 When the caller names a persona, Landing also preserves that prompted
 perspective. Provider and model selection are normally an implementation detail
-rather than a recurring user decision.
+rather than a recurring user decision. A caller who has a reason to make that
+decision is not required to turn it into project policy first.
 
 ## Work, personas, and execution
 
@@ -23,7 +26,7 @@ Landing treats three concerns independently:
 
 A caller can request a task without a persona. When a persona is requested, it
 does not affect route selection: Landing selects from the requested tier's
-routes. Changing routes does not silently change or remove the
+routes, or runs the route the caller named. Changing routes does not silently change or remove the
 requested persona.
 
 ## Routing tiers
@@ -50,7 +53,8 @@ Each configuration can designate one configured tier as its default. A caller
 may name a tier for a work request. When the caller does not name one, Landing
 uses the configured default tier. When neither is present, Landing fails and
 reports the configured tiers. Routing selects a route within a tier; it never
-selects a tier on the caller's behalf.
+selects a tier on the caller's behalf. A request that names its own route does
+not use a tier at all, default or otherwise.
 
 A coding agent can create a small neutral policy that distinguishes work by
 execution needs from Landing's current routable options. Tiers are not named
@@ -60,8 +64,8 @@ hard-code model names.
 
 ## Selection policy
 
-Landing considers only routes in the requested tier. Within that set,
-it uses known signals such as:
+When the caller names a kind of work, Landing considers only routes in the
+requested tier. Within that set, it uses known signals such as:
 
 - capability for the requested work;
 - normalized remaining availability;
@@ -75,6 +79,65 @@ unknown; the product does not fabricate precision.
 Independent capacity pools are treated independently, including separate model
 buckets inside one provider. When one allowance is constrained by several time
 windows, the tightest known window determines its useful headroom.
+
+## Naming a route
+
+Sometimes the model is the request rather than a detail of it: a caller
+comparing two models, reproducing an earlier result, or wanting a second reading
+from a model the project's tiers do not reach. That is a deliberate choice, and
+Landing honors it. The caller names a route — a harness and the model to ask it
+for — and the work runs there.
+
+A named route replaces the tier for that request. A caller names a kind of work
+or a route, never both, because the two answer the same question.
+
+A named route is not filtered by project policy. A caller may name any route
+through a supported harness present on the machine, whether or not a tier
+configures it. Landing confirms the harness can run work. When a harness can
+authoritatively enumerate its models, Landing also rejects an unknown model
+before work starts. When it cannot, Landing accepts a valid model name and lets
+the harness report whether it can run it rather than making a stale guess.
+
+A named route does not fall back. Landing does not rank it against alternatives,
+hold it in reserve, or move the work elsewhere when capacity runs out, because
+substituting another model would discard the reason the caller named this one.
+Work runs on the named route or reports a failure that says so. This is the
+guarantee Landing already makes about a requested persona, for the same reason.
+
+Unreadable capacity does not withhold a named route. Availability decides among
+a tier's routes; a request that names its own route asks no such question, so an
+unreadable gauge is not grounds to refuse it. A harness that cannot run the work
+at all — absent, or reporting that it is not authenticated — is.
+
+A continued conversation stays on the route that owns its context, so continuing
+work that began on a named route requires no further route choice.
+
+Naming a route stays the exception. A tier describes work by what it is rather
+than by which model should do it, and it is what lets Landing answer to
+availability. Naming a route is not a way to supply a tier the project is
+missing: a kind of work the project dispatches repeatedly belongs in its policy.
+
+## Available routes
+
+Naming a route means knowing which routes exist, so Landing reports them. The
+report names every model a harness can authoritatively enumerate, and useful
+known examples from a harness that cannot enumerate them, along with every
+route the project's tiers configure. Each is written the way a caller names it,
+with the harness's observed state and the tiers that use it.
+
+Landing marks an advisory model list as incomplete. A caller may still name a
+valid model that the list does not show; the harness decides whether it can run
+that work. The report never presents examples as a closed provider catalog.
+
+That distinction is the point of the report: it separates a route this project
+has already chosen from one that is merely available, so a caller can see both
+what the policy prefers and what it has passed over. The report answers before a
+project has configured any policy, because which routes exist does not depend on
+that policy.
+
+Reading the report never spends capacity or changes provider state. It says what
+a caller can name; measured availability is reported where availability is the
+question.
 
 ## Personas
 
@@ -123,8 +186,9 @@ This keeps Landing honest without making an unreadable gauge disable all work.
 When an integration confirms exhaustion, Landing records the failure, marks the
 route temporarily unavailable, and may retry on another route in the tier.
 
-Retry is bounded. A malformed task does not tour every provider, and exhaustion
-never becomes an empty success. Temporary route marks expire so stale state does
+Retry belongs to tier routing; a named route does not reroute. Retry is bounded.
+A malformed task does not tour every provider, and exhaustion never becomes an
+empty success. Temporary route marks expire so stale state does
 not permanently block execution.
 
 A continued conversation is not newly routed. It remains on the harness and
@@ -170,14 +234,10 @@ restating the protocol.
 
 A meeting has one tier. Landing uses that tier's ordinary availability-driven
 policy for the arbiter and every participant the caller does not cast. A caller
-may cast a particular participant to any route Landing can reach through an
-installed supported harness, whether or not that route appears in the meeting's
-tier. Landing validates that the harness is supported and installed and that it
-can reach the selected model. The cast route belongs to the meeting, not to the
-persona: personas have no routes, models, harnesses, or tier affinity. A tier
-defines the routes Landing chooses among; it does not constrain a caller's
-specific route choice. Participants retain the capabilities of ordinary Landing
-work, including investigating, reading, and running commands. Landing does not
+may cast a particular participant to a named route, on the same terms as naming
+a route for ordinary work. The cast route belongs to the meeting, not to the
+persona: personas have no routes, models, harnesses, or tier affinity.
+Participants retain the capabilities of ordinary Landing work, including investigating, reading, and running commands. Landing does not
 cap a meeting's spend; the caller chooses a workflow that costs several times
 one dispatch.
 
@@ -216,7 +276,9 @@ remains outside the project.
 - Authentication stays in supported official tooling or official APIs.
 - A route with unreadable capacity reports unknown.
 - A tier with no route is invalid.
-- An unnamed work request requires a configured default tier.
+- A work request that names neither a kind of work nor a route requires a
+  configured default tier.
+- A named route runs as named or fails; Landing never substitutes another.
 - A requested persona is never replaced with another perspective or unprompted
   work.
 - Results preserve failures and identify the selected route when useful.

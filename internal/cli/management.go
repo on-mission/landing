@@ -27,6 +27,7 @@ const (
 	commandTierUpdate    command = "tier update"
 	commandTierRemove    command = "tier remove"
 	commandHarnessList   command = "harness list"
+	commandModelList     command = "model list"
 	commandPersonaList   command = "persona list"
 	commandPersonaShow   command = "persona show"
 	commandPersonaAdd    command = "persona add"
@@ -55,6 +56,8 @@ func managementCommand(positionals []string, forcedPrompt bool) (command, bool) 
 		return commandTierRemove, true
 	case string(commandHarnessList):
 		return commandHarnessList, true
+	case string(commandModelList):
+		return commandModelList, true
 	case string(commandPersonaList):
 		return commandPersonaList, true
 	case string(commandPersonaShow):
@@ -97,6 +100,8 @@ func runManagement(ctx context.Context, selected command, values options, invoca
 		return mutateTier(ctx, selected, values, invocationDir, registry, stdout)
 	case commandHarnessList:
 		return listHarnesses(ctx, registry, values.JSON, stdout)
+	case commandModelList:
+		return listModels(ctx, invocationDir, registry, values.JSON, stdout)
 	case commandPersonaList:
 		return listPersonas(ctx, invocationDir, values.JSON, stdout)
 	case commandPersonaShow:
@@ -109,7 +114,7 @@ func runManagement(ctx context.Context, selected command, values options, invoca
 }
 
 func managementOptions(values options, selected command) error {
-	if values.Tier.Set || values.Reply.Set || values.Persona.Set || values.CWD.Set || values.Label.Set || values.Timeout.Set || values.PromptFile.Set {
+	if values.Tier.Set || values.Model != nil || values.Reply.Set || values.Persona.Set || values.CWD.Set || values.Label.Set || values.Timeout.Set || values.PromptFile.Set {
 		return &usageError{message: fmt.Sprintf("dispatch options are present with command %q", selected)}
 	}
 	isTierMutation := selected == commandTierAdd || selected == commandTierUpdate || selected == commandTierRemove

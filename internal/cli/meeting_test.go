@@ -147,7 +147,9 @@ type castAdapter struct {
 
 func (adapter castAdapter) ID() string { return "remote" }
 
-func (adapter castAdapter) Models() []string { return append([]string(nil), adapter.models...) }
+func (adapter castAdapter) ModelCatalog() harness.ModelCatalog {
+	return harness.ModelCatalog{Models: append([]string(nil), adapter.models...), Authority: harness.ModelCatalogAuthoritative}
+}
 
 func (adapter castAdapter) Detect(context.Context) harness.Detection {
 	return harness.Detection{Status: harness.DetectionReady, Capacity: harness.UnknownCapacity()}

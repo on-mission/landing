@@ -19,6 +19,14 @@ func capacityDetection(path string, capacity harness.Capacity, detail string, au
 			Capacity: capacity,
 		}
 	}
+	if !capacity.HasGauge() {
+		return harness.Detection{
+			Status:   harness.DetectionReady,
+			Path:     path,
+			Capacity: capacity,
+			Detail:   detail,
+		}
+	}
 	if authenticationFailure(detail, "") {
 		return harness.Detection{
 			Status:   harness.DetectionUnauthenticated,

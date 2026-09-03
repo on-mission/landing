@@ -1,182 +1,288 @@
 # Landing
 
-Landing is a command-line router for AI coding work. You describe the kind of
-work you need done; Landing picks which installed harness and model actually
-has capacity to run it right now, dispatches to it, and tells you which one
-served the work.
+**When one AI hits a limit, your work stops. Landing keeps it moving.**
 
-Landing is a Go CLI, distributed as a single static binary with no third-party
-dependencies, for macOS, Linux, and Windows.
+Landing is a local **AI execution optimizer** for coding work. It routes tasks
+through the AI coding agents already installed on your machine according to
+project policy and current availability, while preserving the prompted
+perspective you asked to do the work.
 
-## What it does
+Landing currently supports Codex, Claude Code, Grok, and Cline. Each harness
+keeps control of its own authentication. Landing does not collect provider
+credentials or imitate their clients.
 
-Landing sits between you (or your lead coding agent) and the AI coding
-harnesses already installed on your machine — currently `codex`, `claude`,
-`grok`, and `cline`. It never handles credentials; each harness authenticates
-through its own existing tooling. Landing only reads capacity from each
-harness, which costs nothing and changes nothing.
+## Why Landing exists
 
-You ask for a **tier** — a named kind of work — instead of naming a vendor
-directly. A tier is a list of routes (a harness and, usually, a model) that
-your project defines, in preference order. Landing picks among a tier's
-routes by measured availability and reports which route actually served the
-request.
+AI coding work is fragmented across models, providers, harnesses, and separate
+usage pools. When one path is unavailable, the usual recovery is manual: choose
+another tool, reconstruct the prompt, move whatever context still matters, and
+try again.
 
-Configuration is project-scoped, at `.landing/config.json`, created and edited
-through Landing's own commands (or by hand — Landing validates whatever it
-reads). There are no global settings.
+Landing turns those separate execution paths into one project-owned policy:
 
-Two capabilities build on the same dispatch mechanism:
+| You decide | Landing concept |
+| --- | --- |
+| What kind of work this is | A routing tier |
+| Which perspective should do it | An optional persona |
+| Which eligible model and harness should run it | An availability-aware route |
 
-- **Meetings** put one question to several personas in parallel and have an
-  arbiter persona read their positions.
-- **Comms** let agents working in the same project message each other across
-  harnesses.
+The core separation is **who does the work** versus **where it runs**. A
+security reviewer should remain a security reviewer whether the eligible route
+is served by Codex, Claude Code, Grok, or Cline.
+
+```text
+task + optional persona
+          │
+          ▼
+   project routing tier
+          │
+          ▼
+ policy + current availability
+          │
+          ▼
+ installed harness and model
+```
+
+## What Landing does
+
+- **Optimizes execution.** Landing checks eligible routes and selects one using
+  measured availability and the policy defined by the project.
+- **Keeps work moving.** After confirmed exhaustion, Landing can mark that route
+  temporarily unavailable and reroute the task once.
+- **Preserves prompted expertise.** Project-owned personas carry their
+  instructions and reference material independently of the selected model.
+- **Delegates from the tools you already use.** A person or lead coding agent can
+  invoke Landing without moving into another workspace or dashboard.
+- **Convenes independent perspectives.** Meetings ask several personas the same
+  question in clean contexts, then ask an arbiter persona to identify genuine
+  conflicts.
+- **Connects agents across harnesses.** Comms provide durable, attributed
+  messages between supported live sessions and resumable dispatched threads in
+  one project.
+
+Landing runs locally as a single Go binary. Project policy and personas live in
+`.landing/` and can travel with the repository; personal authentication does
+not.
 
 ## Install
 
-With a Go toolchain:
+Download a prebuilt binary for macOS, Linux, or Windows from
+[GitHub Releases](https://github.com/on-mission/landing/releases), verify it
+against the accompanying `checksums.txt`, and put it on your `PATH`.
 
-```
+With a Go toolchain, you can instead install the latest tagged version:
+
+```sh
 go install github.com/on-mission/landing/cmd/landing@latest
 ```
 
-This installs to `$(go env GOPATH)/bin`, which must be on your `PATH`. It
-resolves through the Go module proxy; the binary it builds is not stamped
-with a released version or commit (`landing --version` reports `dev`) since
-`go install` doesn't run this repo's release build. No tagged release exists
-yet — `@latest` currently resolves to a pseudo-version off the newest commit
-on `main` rather than a tagged release; once a `v*` tag exists, `@latest`
-will follow tags instead.
+Make sure `$(go env GOPATH)/bin` is on your `PATH`. Builds produced by
+`go install` are not stamped by Landing's release workflow, so `landing --version`
+may report `dev`; the release artifacts contain the stamped version.
 
-Without a Go toolchain, download a prebuilt binary from the
-[Releases](../../releases) page for macOS, Linux, or Windows, verify it
-against the accompanying `checksums.txt`, and put it on your `PATH`. Release
-notes on each artifact state which platforms were actually executed by CI
-and which were only cross-compiled — read that before trusting one you
-haven't tested yourself.
+To build from a checkout:
 
-To build from a checkout instead:
-
-```
+```sh
 go build -o landing ./cmd/landing
 ```
 
-That produces a `landing` binary in the current directory. Put it on your
-`PATH`, or invoke it directly (`./landing`).
-
 ## Quickstart
 
-Landing does nothing until a project has a configuration naming at least one
-tier. Starting from an empty directory:
+Landing is designed to be configured by the coding agent already working with
+you. You can ask it:
 
-```
-$ landing "write a haiku about compilers"
-error: CONFIG_NOT_FOUND: no .landing/config.json exists between "/tmp/demo" and "/"
-```
+> Inspect the AI coding harnesses Landing can use in this project, show me the
+> available routes, and configure a sensible default routing tier. Tell me
+> exactly what you change.
 
-Create one:
+The agent can discover the current command surface from `landing --help` and
+the routes available on your machine from `landing harness list`.
 
-```
-$ landing config init
-configuration: /tmp/demo/.landing/config.json
-tiers: none; configuration file names no tiers, and dispatch resolves only when at least one exists
-default tier: none
-```
+To configure Landing directly, initialize the project and inspect its available
+harnesses:
 
-A fresh config names no tiers on purpose — dispatch still won't work. See
-what Landing can actually route to on this machine, then add a tier that uses
-one of those routes:
-
-```
-$ landing harness list
-claude: ready
-  path: /home/you/.local/bin/claude
-  capacity: five_hour 4.00% used, seven_day 1.00% used
-  models: claude-opus-5, claude-sonnet-5, claude-haiku-4-5-20251001
-codex: ready
-  path: /opt/homebrew/bin/codex
-  capacity: codex_bengalfox 3.00% used, codex 23.00% used
-  models: gpt-5.6-terra, gpt-5.3-codex-spark, gpt-5.6-luna
-...
-
-$ landing tier add --name default --description "General work" --route claude/claude-sonnet-5 --default
-added tier: default
+```sh
+landing config init
+landing harness list
 ```
 
-Now dispatch:
+Then create a tier from routes reported by `landing harness list`. A tier is a
+named policy for a kind of work, not a provider:
 
-```
-$ landing "say hi in exactly 3 words"
-Hey there, Ray!
-thread: 720653a4-36e5-43a1-81e1-7dce733e1132
-harness: claude (model: claude-sonnet-5)
-```
-
-Landing reports the thread it created and which route actually served the
-work. Continue that thread with `--reply`:
-
-```
-$ landing --reply 720653a4-36e5-43a1-81e1-7dce733e1132 "now say bye in 3 words"
-Bye for now!
-thread: 720653a4-36e5-43a1-81e1-7dce733e1132
-harness: claude (model: claude-sonnet-5)
-```
-
-## Beyond one route
-
-A tier can list more than one route, in preference order, and reserve a
-lower-preference route until capacity on the one above it drops below a
-threshold:
-
-```
-landing tier add --name default \
-  --route claude/claude-sonnet-5 \
-  --route codex/gpt-5.6-luna --fallback-below 20 \
+```sh
+landing tier add \
+  --name default \
+  --description "General coding work" \
+  --route codex/gpt-5.6-terra \
+  --route claude/claude-sonnet-5 --fallback-below 20 \
   --default
 ```
 
-Run `landing --help` for the full command surface, and `landing <command>
---help` (for example `landing tier add --help`) for a specific command's
-flags. Help text and `landing config show` reflect the exact, current syntax
-and configured state — that reference isn't duplicated here because it drifts
-from the code otherwise.
+The second route in this example is held in reserve until every ordinary route
+has less than 20% measured availability. Routes may use separate model pools
+inside one provider, different providers, or both.
+
+Now dispatch work without choosing a harness at invocation time:
+
+```sh
+landing "Review the authentication flow and identify the highest-risk flaw."
+```
+
+Landing returns the result and identifies the harness, model, and thread that
+served it. When the harness supports continuation, reply in the same thread:
+
+```sh
+landing --reply <thread-id> "Now propose the smallest safe fix."
+```
+
+When a specific model is the point of the request rather than an
+implementation detail, name the route instead of a tier and Landing skips
+routing entirely:
+
+```sh
+landing model list
+landing --model grok/grok-4.6 "Port this module and keep the public API."
+```
+
+A dispatch takes `--tier` or `--model`, never both. A pinned route has no
+fallback: if you asked for that model, quietly substituting another defeats
+the point. Replies continue on the route their thread already runs on.
+
+## Reusable personas
+
+A persona captures a prompted perspective and its project-specific reference
+material. It has no provider, model, harness, or routing preference of its own.
+
+Create one from an instructions file:
+
+```sh
+landing persona add \
+  --name security-reviewer \
+  --description "Finds exploitable boundaries and unsafe assumptions" \
+  --instructions-file ./security-reviewer.md
+```
+
+Then ask that persona to do work through any configured tier:
+
+```sh
+landing --persona security-reviewer \
+  "Review the authentication flow and identify the highest-risk flaw."
+```
+
+If availability moves the task to another eligible route, Landing preserves the
+requested persona rather than silently replacing it with generic instructions.
 
 ## Meetings
 
-A meeting dispatches one question to multiple personas in parallel, then
-gives their independent positions to an arbiter persona, which responds in
-prose:
+Some decisions need independent perspectives, not another pass from the same
+context. A Landing meeting runs one deliberation round: participants answer the
+same question independently, then an arbiter persona reads their positions and
+identifies conflicts that cannot all be acted on.
 
+```sh
+landing meeting \
+  --arbiter staff-engineer \
+  --persona security-reviewer \
+  --persona product-reviewer \
+  "Should we ship this authentication design?"
 ```
-landing meeting --arbiter <persona> --persona <persona> --persona <persona> "<question>"
-```
 
-## Comms
+Landing returns every position and the arbiter's reading. It does not force
+agreement, decide whether another round is needed, or hide minority concerns.
+The lead agent or user remains responsible for synthesis and the final decision.
 
-Agents dispatched through Landing in the same project can message each other
-across harnesses with `landing comms`. Delivery to a *running* session
-depends on that harness trusting a hook Landing installs into its project
-configuration:
+## Agent comms
 
-```
+Agents working in the same project can discover one another and exchange
+durable, attributed messages even when they run in different harnesses.
+
+Install the supported harness hooks after reviewing the files Landing plans to
+change:
+
+```sh
 landing comms --install
 ```
 
-Landing cannot grant that trust on your behalf — each harness must be
-configured to accept it. Without installed hooks, an agent can still read its
-own inbox and history (`landing comms --inbox`, `landing comms --history`),
-and threads dispatched through Landing still register.
+Then inspect participants and send a message:
+
+```sh
+landing who
+landing comms --agent <name> --message "I changed the routing boundary; review before editing it."
+```
+
+Request a response when the recipient's existing context matters:
+
+```sh
+landing comms \
+  --agent <name> \
+  --message "Does your current implementation depend on the old schema?" \
+  --require-response
+```
+
+Messages to live sessions arrive at the honest delivery boundaries supported by
+their harness. Messages to resumable Landing threads can wake the thread and
+spend model capacity. Comms coordinate work; they are not locks, permissions,
+or shared memory.
+
+## Useful inspection commands
+
+```sh
+landing config show
+landing harness list
+landing model list
+landing tier list
+landing persona list
+landing who
+landing comms --inbox
+landing comms --history
+```
+
+Run `landing --help` for the full command surface and `landing <command> --help`
+for command-specific options. CLI help is the source of truth for current
+syntax.
+
+## Trust and execution permissions
+
+Landing dispatches unattended coding agents. To prevent a routed task from
+stalling at an approval prompt, the current Codex, Claude Code, and Cline
+adapters use permissive execution modes. A dispatched agent may read and modify
+files or run commands with the access granted to its harness.
+
+Use Landing only in projects and environments you trust. Review your working
+tree, harness configuration, sandbox settings, and the requested work before
+dispatching. Landing reports what served a task, but routing does not make the
+task itself safe.
+
+Capacity probes are read-only and do not spend model credits or mutate provider
+state. Landing uses the user's installed official tooling and never copies or
+stores provider credentials.
+
+## Boundaries
+
+Landing is not:
+
+- a promise to eliminate every usage limit;
+- a mechanism for bypassing a provider's restrictions;
+- a pool of shared credentials or consumer accounts;
+- a universal shared-memory layer;
+- a cross-machine messaging service;
+- a hosted control plane; or
+- another agent workspace that replaces the tools you already use.
+
+Each configured route remains independently authenticated and subject to its
+provider's terms. When one route is unavailable, Landing can choose another
+route allowed by the project's policy; it does not alter or evade the first
+route's limit.
 
 ## Contributing
 
 Before sending a change, run:
 
-```
+```sh
 go build ./...
 go vet ./...
 gofmt -l .        # must produce no output
 go test ./... -race
 ```
 
-Licensed under the [MIT License](LICENSE).
+Landing is licensed under the [MIT License](LICENSE).

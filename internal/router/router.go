@@ -256,6 +256,9 @@ func ResolveRoute(tier config.Tier, coldMarks map[string]ColdMark, capacities ma
 	unknownSuffix := ""
 	if selected.score == nil && selected.fallbackBelowPercent == nil {
 		unknownSuffix = "; capacity was unreadable, so it was selected only after measured candidates"
+		if !selected.capacity.HasGauge() {
+			unknownSuffix = "; the harness exposes no capacity gauge, so it was selected only after measured candidates"
+		}
 	}
 	reasons := append([]string{fmt.Sprintf("tier %q → %s%s", tier.Name, selection, unknownSuffix)}, skipped...)
 
@@ -370,6 +373,9 @@ func codexBucketFor(model *string) string {
 }
 
 func describeCapacity(provider string, capacity harness.Capacity) string {
+	if !capacity.HasGauge() {
+		return fmt.Sprintf("%s has no capacity gauge", provider)
+	}
 	if !capacity.IsKnown() {
 		return fmt.Sprintf("%s capacity is unknown", provider)
 	}

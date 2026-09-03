@@ -234,8 +234,8 @@ func (adapter *commsLifecycleAdapter) ID() string {
 	return "fake"
 }
 
-func (adapter *commsLifecycleAdapter) Models() []string {
-	return nil
+func (adapter *commsLifecycleAdapter) ModelCatalog() harness.ModelCatalog {
+	return harness.ModelCatalog{Authority: harness.ModelCatalogAuthoritative}
 }
 
 func (adapter *commsLifecycleAdapter) Detect(context.Context) harness.Detection {

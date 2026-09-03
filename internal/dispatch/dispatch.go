@@ -74,15 +74,36 @@ func (tierError *TierResolutionError) Error() string {
 }
 
 func (engine *Engine) Dispatch(ctx context.Context, request Request) (Response, error) {
+	if request.Route != nil {
+		role, err := engine.pinnedRole(request)
+		if err != nil {
+			return Response{}, err
+		}
+
+		return engine.dispatchCast(ctx, role, request)
+	}
 	tier, err := engine.tier(request.Tier)
 	if err != nil {
 		return Response{}, err
 	}
-	if request.Route != nil {
-		return engine.dispatchCast(ctx, tier, request)
-	}
 
 	return engine.dispatch(ctx, tier, request)
+}
+
+// pinnedRole names the work a pinned dispatch is recorded under. A meeting
+// cast runs inside a tier and keeps that tier's name. A caller who named a
+// route instead of a tier has no tier to record, so the route itself becomes
+// the role; that is what later lets a reply resume the thread it started.
+func (engine *Engine) pinnedRole(request Request) (string, error) {
+	if request.Tier == "" {
+		return request.Route.String(), nil
+	}
+	tier, err := engine.tier(request.Tier)
+	if err != nil {
+		return "", err
+	}
+
+	return tier.Name, nil
 }
 
 func (engine *Engine) Reply(ctx context.Context, request ReplyRequest) (Response, error) {
@@ -93,7 +114,7 @@ func (engine *Engine) Reply(ctx context.Context, request ReplyRequest) (Response
 	if err != nil {
 		return Response{}, err
 	}
-	tier, err := roleFor(*original, engine.configuration)
+	role, err := roleFor(*original, engine.configuration)
 	if err != nil {
 		return Response{}, err
 	}
@@ -132,7 +153,7 @@ func (engine *Engine) Reply(ctx context.Context, request ReplyRequest) (Response
 		Model:          original.Model,
 		CWD:            original.CWD,
 		Label:          label,
-		Role:           stringPointer(tier.Name),
+		Role:           stringPointer(role),
 		BeforeSpawn:    registration.beforeSpawn,
 	})
 	if err != nil {
@@ -144,7 +165,7 @@ func (engine *Engine) Reply(ctx context.Context, request ReplyRequest) (Response
 	if err != nil {
 		return Response{}, err
 	}
-	response := responseFor(*finished, tier)
+	response := responseFor(*finished, role)
 	response.JobID = original.JobID
 	if timeoutMessage != "" {
 		response.Status = harness.JobStatusTimeout
@@ -205,7 +226,7 @@ func (engine *Engine) dispatch(ctx context.Context, tier config.Tier, request Re
 
 // dispatchCast starts the caller-selected route without tier routing or recovery.
 // A cast is a meeting-scoped route choice, so re-routing it would violate that choice.
-func (engine *Engine) dispatchCast(ctx context.Context, tier config.Tier, request Request) (Response, error) {
+func (engine *Engine) dispatchCast(ctx context.Context, role string, request Request) (Response, error) {
 	cwd := request.CWD
 	if !filepath.IsAbs(cwd) {
 		return Response{}, harness.NewError(
@@ -233,7 +254,7 @@ func (engine *Engine) dispatchCast(ctx context.Context, tier config.Tier, reques
 		Persona:       selectedPersona,
 		CWD:           cwd,
 		Label:         request.Label,
-		Role:          stringPointer(tier.Name),
+		Role:          stringPointer(role),
 		Model:         model,
 		RoutedBecause: stringPointer(reason),
 		Capacity:      harness.UnknownCapacity(),
@@ -244,15 +265,15 @@ func (engine *Engine) dispatchCast(ctx context.Context, tier config.Tier, reques
 	}
 
 	registration.update(record)
-	return engine.awaitCast(ctx, tier, request, record, registration.thread)
+	return engine.awaitCast(ctx, role, request, record, registration.thread)
 }
 
-func (engine *Engine) awaitCast(ctx context.Context, tier config.Tier, request Request, record *harness.JobRecord, thread *threadParticipant) (Response, error) {
+func (engine *Engine) awaitCast(ctx context.Context, role string, request Request, record *harness.JobRecord, thread *threadParticipant) (Response, error) {
 	finished, timeoutMessage, err := engine.await(ctx, record.JobID, request.AwaitTimeout, thread)
 	if err != nil {
 		return Response{}, err
 	}
-	response := responseFor(*finished, tier)
+	response := responseFor(*finished, role)
 	if timeoutMessage != "" {
 		response.Status = harness.JobStatusTimeout
 		response.Error = stringPointer(timeoutMessage)
@@ -278,14 +299,14 @@ func (engine *Engine) awaitDispatch(ctx context.Context, tier config.Tier, reque
 				return Response{}, timeoutErr
 			}
 			thread.finish(timedOut)
-			response := responseFor(*timedOut, tier)
+			response := responseFor(*timedOut, tier.Name)
 			response.Status = harness.JobStatusTimeout
 			response.Error = stringPointer(timeoutMessage)
 			return response, nil
 		}
 		thread.finish(finished)
 		if !finished.Exhausted || finished.RerouteCount >= 1 {
-			return responseFor(*finished, tier), nil
+			return responseFor(*finished, tier.Name), nil
 		}
 
 		expiresAt := engine.router.MarkProviderCold(finished.Provider, finished.Capacity, time.Now())
@@ -301,7 +322,7 @@ func (engine *Engine) awaitDispatch(ctx context.Context, tier config.Tier, reque
 					return Response{}, timeoutErr
 				}
 				thread.finish(timedOut)
-				response := responseFor(*timedOut, tier)
+				response := responseFor(*timedOut, tier.Name)
 				response.Status = harness.JobStatusTimeout
 				response.Error = stringPointer(timeoutMessage)
 				return response, nil
@@ -309,7 +330,7 @@ func (engine *Engine) awaitDispatch(ctx context.Context, tier config.Tier, reque
 			return Response{}, err
 		}
 		if reroute.Provider == "" {
-			return responseFor(*finished, tier), nil
+			return responseFor(*finished, tier.Name), nil
 		}
 		nextAdapter, err := engine.router.Adapter(reroute.Provider)
 		if err != nil {
@@ -406,10 +427,10 @@ func (engine *Engine) lookupOrAdopt(ctx context.Context, jobID string) (*harness
 	return adopted, nil
 }
 
-func responseFor(record harness.JobRecord, tier config.Tier) Response {
+func responseFor(record harness.JobRecord, role string) Response {
 	projection := jobs.Project(record)
-	projection.Role = stringPointer(tier.Name)
-	return Response{Projection: projection, Role: tier.Name}
+	projection.Role = stringPointer(role)
+	return Response{Projection: projection, Role: role}
 }
 
 func noProviderAvailable(tier config.Tier) *harness.Error {
@@ -429,20 +450,36 @@ func (engine *Engine) tier(name string) (config.Tier, error) {
 	return config.Tier{}, &TierResolutionError{Tier: name, AvailableTiers: engine.configuration.TierNames()}
 }
 
-func roleFor(record harness.JobRecord, configuration config.Config) (config.Tier, error) {
+// roleFor names the work a recorded job ran under. A job routed through a tier
+// records that tier's name; a job the caller pinned with --model records the
+// route. A configured tier is read first, so a project may name a tier whatever
+// it likes without changing how its own jobs resolve.
+func roleFor(record harness.JobRecord, configuration config.Config) (string, error) {
 	if record.Role == nil || *record.Role == "" {
-		return config.Tier{}, &TierResolutionError{JobID: record.JobID, AvailableTiers: configuration.TierNames()}
+		return "", &TierResolutionError{JobID: record.JobID, AvailableTiers: configuration.TierNames()}
 	}
 	tier, ok := configuration.Tier(*record.Role)
 	if ok {
-		return tier, nil
+		return tier.Name, nil
+	}
+	if isRouteRole(record, *record.Role) {
+		return *record.Role, nil
 	}
 
-	return config.Tier{}, &TierResolutionError{
+	return "", &TierResolutionError{
 		Tier:           *record.Role,
 		JobID:          record.JobID,
 		AvailableTiers: configuration.TierNames(),
 	}
+}
+
+// isRouteRole reports whether a role names the route that actually ran this
+// job. Requiring the record's own provider keeps a tier name that has since
+// been removed from configuration from being read as a route.
+func isRouteRole(record harness.JobRecord, role string) bool {
+	harnessName, model, hasModel := strings.Cut(role, "/")
+
+	return hasModel && harnessName == record.Provider && model != "" && !strings.Contains(model, "/")
 }
 
 func quotedTiers(tiers []string) string {

@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -78,10 +79,57 @@ func (adapter *codexAdapter) ID() string {
 	return "codex"
 }
 
-func (adapter *codexAdapter) Models() []string {
-	// Codex has no model-listing surface yet. This literal is a module-local
-	// stand-in for one, so replacing it does not change configuration or routing.
-	return []string{"gpt-5.6-terra", "gpt-5.3-codex-spark", "gpt-5.6-luna"}
+func (adapter *codexAdapter) ModelCatalog() harness.ModelCatalog {
+	return harness.ModelCatalog{
+		Models:    codexKnownModels(),
+		Authority: harness.ModelCatalogAdvisory,
+	}
+}
+
+func codexKnownModels() []string {
+	models := []string{"gpt-5.6-terra", "gpt-5.3-codex-spark", "gpt-5.6-luna"}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return models
+	}
+
+	contents, err := os.ReadFile(filepath.Join(home, ".codex", "config.toml"))
+	if err != nil {
+		return models
+	}
+	configured := codexConfiguredModel(contents)
+	if configured == "" || codexModelKnown(models, configured) {
+		return models
+	}
+
+	return append(models, configured)
+}
+
+func codexConfiguredModel(contents []byte) string {
+	for _, line := range strings.Split(string(contents), "\n") {
+		key, value, found := strings.Cut(line, "=")
+		if !found || strings.TrimSpace(key) != "model" {
+			continue
+		}
+		model, err := strconv.Unquote(strings.TrimSpace(value))
+		if err != nil {
+			return ""
+		}
+
+		return model
+	}
+
+	return ""
+}
+
+func codexModelKnown(models []string, candidate string) bool {
+	for _, model := range models {
+		if model == candidate {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (adapter *codexAdapter) Detect(ctx context.Context) harness.Detection {

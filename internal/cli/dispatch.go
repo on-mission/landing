@@ -23,7 +23,7 @@ import (
 )
 
 func runDispatch(ctx context.Context, inputs Inputs, values options, positionals []string, invocationDir string, registry router.Registry) (int, error) {
-	if err := unexpectedOptions(values, "prompt dispatch", "tier", "reply", "persona", "cwd", "label", "timeout", "prompt-file", "json"); err != nil {
+	if err := unexpectedOptions(values, "prompt dispatch", "tier", "model", "reply", "persona", "cwd", "label", "timeout", "prompt-file", "json"); err != nil {
 		return exitUsage, err
 	}
 	if len(positionals) == 0 && !values.PromptFile.Set {
@@ -34,7 +34,7 @@ func runDispatch(ctx context.Context, inputs Inputs, values options, positionals
 		return exitUsage, err
 	}
 	isReply := values.Reply.Set
-	dispatchTier, err := selectTier(values.Tier, isReply, *configuration)
+	target, err := selectTarget(ctx, values, isReply, *configuration, registry)
 	if err != nil {
 		return exitUsage, err
 	}
@@ -59,14 +59,14 @@ func runDispatch(ctx context.Context, inputs Inputs, values options, positionals
 	store := jobs.NewStore(ctx)
 	defer store.Shutdown(context.Background())
 	engine := dispatch.New(router.New(registry), store, *configuration)
-	progressName := dispatchTier
+	progressName := target.name()
 	if isReply {
 		progressName = "reply"
 	}
 	stopProgress := startProgress(progressName, inputs.Stderr)
 	defer stopProgress()
 
-	response, err := dispatchRequest(ctx, engine, store, invocationDir, resolvedValues, dispatchTier, prompt, timeout)
+	response, err := dispatchRequest(ctx, engine, store, invocationDir, resolvedValues, target, prompt, timeout)
 	if err != nil {
 		return exitFailed, err
 	}
@@ -144,32 +144,40 @@ func meetingCasts(ctx context.Context, casts []castOption, personas []string, re
 		if _, ok := resolved[cast.Persona]; ok {
 			return nil, &usageError{message: fmt.Sprintf("--cast names participant %q more than once", cast.Persona)}
 		}
-		adapter, err := registry.Resolve(cast.Route.Harness)
+		route, err := pinnedRoute(ctx, cast.Route, registry, fmt.Sprintf("--cast for %q", cast.Persona))
 		if err != nil {
-			return nil, &usageError{message: fmt.Sprintf("--cast for %q names unsupported harness %q", cast.Persona, cast.Route.Harness)}
+			return nil, err
 		}
-		detection := adapter.Detect(ctx)
-		if detection.Status != harness.DetectionReady {
-			return nil, &usageError{message: fmt.Sprintf("--cast for %q names harness %q with observed state %q", cast.Persona, cast.Route.Harness, detection.Status)}
-		}
-		if cast.Route.Model != nil && !meetingModelSupported(*cast.Route.Model, adapter.Models()) {
-			return nil, &usageError{message: fmt.Sprintf("--cast for %q names model %q, which harness %q cannot reach; reachable models are %s", cast.Persona, *cast.Route.Model, cast.Route.Harness, quotedModels(adapter.Models()))}
-		}
-		route := config.Route{Harness: cast.Route.Harness, Model: cast.Route.Model}
 		resolved[cast.Persona] = route
 	}
 
 	return resolved, nil
 }
 
-func meetingModelSupported(model string, models []string) bool {
-	for _, candidate := range models {
-		if model == candidate {
-			return true
-		}
+// pinnedRoute validates a route the caller named outright, for a dispatch's
+// --model and for a meeting's --cast alike. A pinned route skips tier routing,
+// and with it the configuration checks that would have caught an unsupported
+// harness or an unreachable model, so this is where those are caught instead.
+func pinnedRoute(ctx context.Context, option routeOption, registry router.Registry, subject string) (config.Route, error) {
+	adapter, err := registry.Resolve(option.Harness)
+	if err != nil {
+		return config.Route{}, &usageError{message: fmt.Sprintf("%s names unsupported harness %q; supported harnesses are %s", subject, option.Harness, strings.Join(sortedHarnessIDs(registry), ", "))}
+	}
+	// A pinned route never consults capacity, so a failed or absent capacity
+	// gauge is no reason to refuse one: an unmeasured route ranks below a
+	// measured route rather than being disabled. What does refuse a pin is a
+	// harness that cannot run the work at all — one that is not installed, or
+	// that is installed and has said it is not authenticated.
+	detection := adapter.Detect(ctx)
+	if detection.Status == harness.DetectionAbsent || detection.Status == harness.DetectionUnauthenticated {
+		return config.Route{}, &usageError{message: fmt.Sprintf("%s names harness %q with observed state %q", subject, option.Harness, detection.Status)}
+	}
+	catalog := adapter.ModelCatalog()
+	if option.Model != nil && !catalog.Supports(*option.Model) {
+		return config.Route{}, &usageError{message: fmt.Sprintf("%s names model %q, which harness %q cannot reach; reachable models are %s", subject, *option.Model, option.Harness, quotedModels(catalog.Models))}
 	}
 
-	return false
+	return config.Route{Harness: option.Harness, Model: option.Model}, nil
 }
 
 func quotedModels(models []string) string {
@@ -193,6 +201,48 @@ func loadConfiguration(ctx context.Context, invocationDir string, registry route
 	return &configuration, nil
 }
 
+// dispatchTarget is what a dispatch runs on: a tier Landing routes within, or
+// a route the caller named outright. Exactly one of the two is set.
+type dispatchTarget struct {
+	Tier  string
+	Route *config.Route
+}
+
+// name is what progress output and diagnostics call this target.
+func (target dispatchTarget) name() string {
+	if target.Route != nil {
+		return target.Route.String()
+	}
+
+	return target.Tier
+}
+
+// selectTarget resolves a dispatch's execution path. --tier names a policy
+// Landing routes within; --model names one route and skips routing entirely.
+// Both answer the same question, so a caller supplies at most one.
+func selectTarget(ctx context.Context, values options, reply bool, configuration config.Config, registry router.Registry) (dispatchTarget, error) {
+	if values.Model == nil {
+		tier, err := selectTier(values.Tier, reply, configuration)
+		if err != nil {
+			return dispatchTarget{}, err
+		}
+
+		return dispatchTarget{Tier: tier}, nil
+	}
+	if values.Tier.Set {
+		return dispatchTarget{}, &usageError{message: "--model is present with --tier; a dispatch names one or the other"}
+	}
+	if reply {
+		return dispatchTarget{}, &usageError{message: "--model is present with --reply; a reply continues on the route its thread already runs on"}
+	}
+	route, err := pinnedRoute(ctx, *values.Model, registry, "--model")
+	if err != nil {
+		return dispatchTarget{}, err
+	}
+
+	return dispatchTarget{Route: &route}, nil
+}
+
 func selectTier(supplied parsedOption, reply bool, configuration config.Config) (string, error) {
 	if reply {
 		if supplied.Set {
@@ -213,10 +263,10 @@ func selectTier(supplied parsedOption, reply bool, configuration config.Config) 
 	return "", &usageError{message: fmt.Sprintf("no default tier is configured; configured tiers are %s", strings.Join(configuration.TierNames(), ", "))}
 }
 
-func dispatchRequest(ctx context.Context, engine *dispatch.Engine, store *jobs.Store, invocationDir string, values options, tier string, prompt string, timeout time.Duration) (dispatch.Response, error) {
+func dispatchRequest(ctx context.Context, engine *dispatch.Engine, store *jobs.Store, invocationDir string, values options, target dispatchTarget, prompt string, timeout time.Duration) (dispatch.Response, error) {
 	label := optionPointer(values.Label)
 	if !values.Reply.Set {
-		return engine.Dispatch(ctx, dispatch.Request{Tier: tier, Prompt: prompt, CWD: values.CWD.Value, Label: label, Persona: values.Persona.Value, AwaitTimeout: timeout})
+		return engine.Dispatch(ctx, dispatch.Request{Tier: target.Tier, Route: target.Route, Prompt: prompt, CWD: values.CWD.Value, Label: label, Persona: values.Persona.Value, AwaitTimeout: timeout})
 	}
 	if values.Reply.Value == "" {
 		return dispatch.Response{}, &usageError{message: "--reply has an empty id"}

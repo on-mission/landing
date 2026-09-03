@@ -48,14 +48,11 @@ func (adapter *claudeAdapter) ID() string {
 	return "claude"
 }
 
-func (adapter *claudeAdapter) Models() []string {
-	// Claude has no model-listing surface yet. This literal is a module-local
-	// stand-in for one, so replacing it does not change configuration or routing.
-	//
-	// It lists what the harness can reach, not what the built-in tiers happen to
-	// use: the adapter passes --model through verbatim, so omitting a reachable
-	// model here would make Landing under-report itself.
-	return []string{"claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"}
+func (adapter *claudeAdapter) ModelCatalog() harness.ModelCatalog {
+	return harness.ModelCatalog{
+		Models:    []string{"claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"},
+		Authority: harness.ModelCatalogAdvisory,
+	}
 }
 
 func (adapter *claudeAdapter) Detect(ctx context.Context) harness.Detection {
