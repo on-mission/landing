@@ -564,7 +564,11 @@ func TestGrokModelsCachesLiveListing(t *testing.T) {
 // output, which would make a usable route needlessly undiscoverable.
 func TestCodexModelCatalogIncludesConfiguredModel(t *testing.T) {
 	home := t.TempDir()
+	// os.UserHomeDir reads HOME on unix and USERPROFILE on Windows, and this
+	// suite runs on both. Setting only one leaves the other platform reading
+	// the real home directory, where this test's config file does not exist.
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	configDirectory := filepath.Join(home, ".codex")
 	if err := os.MkdirAll(configDirectory, 0o700); err != nil {
 		t.Fatal(err)
