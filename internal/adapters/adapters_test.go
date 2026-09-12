@@ -46,6 +46,37 @@ func TestClaudeBuildRequestsCarryPermissionMode(t *testing.T) {
 	}
 }
 
+func TestGrokBuildRequestsCarryPermissionMode(t *testing.T) {
+	adapter := &grokAdapter{command: "grok"}
+	model := "grok-4.6"
+	tests := []struct {
+		name  string
+		build func() (harness.Request, error)
+		want  []string
+	}{
+		{
+			name: "start", build: func() (harness.Request, error) {
+				return adapter.BuildStart(harness.StartParams{Prompt: "work", Model: &model, CWD: "/repo"})
+			},
+			want: []string{"-p", "work", "--output-format", "json", "--cwd", "/repo", "--permission-mode", "bypassPermissions", "-m", model},
+		},
+		{
+			name: "resume", build: func() (harness.Request, error) {
+				return adapter.BuildResume(harness.ResumeParams{ThreadID: "thread", Prompt: "work", CWD: "/repo"})
+			},
+			want: []string{"-r", "thread", "-p", "work", "--output-format", "json", "--cwd", "/repo", "--permission-mode", "bypassPermissions"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request, err := test.build()
+			if err != nil || request.Command != "grok" || !reflect.DeepEqual(request.Args, test.want) {
+				t.Fatalf("request = %#v, %v; want grok %#v", request, err, test.want)
+			}
+		})
+	}
+}
+
 func TestClaudeCapacityProbeCarriesCommsProvenance(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("test fixture uses a POSIX shell script to fake the claude executable")

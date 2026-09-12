@@ -217,13 +217,16 @@ func (adapter *grokAdapter) Validate(harness.StartParams) error {
 	return nil
 }
 
+// A dispatched job runs unattended. Grok's permission gate cancels with an
+// empty result when nobody can answer it, and local approvals can mask that
+// behavior, so permission cannot be left to machine state.
 func (adapter *grokAdapter) BuildStart(params harness.StartParams) (harness.Request, error) {
 	command, err := adapter.resolveGrokCommand()
 	if err != nil {
 		return harness.Request{}, err
 	}
 
-	args := []string{"-p", promptWithPersona(params.Prompt, params.Persona), "--output-format", "json", "--cwd", params.CWD}
+	args := []string{"-p", promptWithPersona(params.Prompt, params.Persona), "--output-format", "json", "--cwd", params.CWD, "--permission-mode", "bypassPermissions"}
 	if params.Model != nil && *params.Model != "" {
 		args = append(args, "-m", *params.Model)
 	}
@@ -243,7 +246,7 @@ func (adapter *grokAdapter) BuildResume(params harness.ResumeParams) (harness.Re
 
 	return harness.Request{
 		Command:         command,
-		Args:            []string{"-r", params.ThreadID, "-p", promptWithPersona(params.Prompt, params.Persona), "--output-format", "json", "--cwd", params.CWD},
+		Args:            []string{"-r", params.ThreadID, "-p", promptWithPersona(params.Prompt, params.Persona), "--output-format", "json", "--cwd", params.CWD, "--permission-mode", "bypassPermissions"},
 		PersonaDelivery: personaDelivery(params.Persona, harness.PersonaDeliveryPromptComposition),
 	}, nil
 }
