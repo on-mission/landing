@@ -130,8 +130,8 @@ type modelReport struct {
 }
 
 // listModels reports every route a caller can name, from the harnesses Landing
-// supports and the tiers this project configured, in the harness/model form
-// --model takes.
+// supports and the tiers this project configured, in the harness or
+// harness/model form --model takes.
 //
 // It runs harness detection so the report says what is usable now, but
 // deliberately skips capacity probes. This is the lookup a caller makes before
@@ -160,12 +160,11 @@ func listModels(ctx context.Context, invocationDir string, registry router.Regis
 			reports = append(reports, modelReport{Route: route, Harness: id, Model: model, Status: status, Tiers: tiers, Selectable: true, ModelCatalog: catalog.Authority})
 		}
 		// A harness may expose no model at all, and a tier may configure one
-		// without naming a model. Either way it is a route this project runs
-		// work on, so the report names it — while saying plainly that --model
-		// requires a model and so cannot select it.
+		// without naming a model. Either way it is an execution path a caller
+		// can name with --model.
 		_, configuredBare := membership[id]
 		if configuredBare || len(models) == 0 {
-			reports = append(reports, modelReport{Route: id, Harness: id, Status: status, Tiers: membership[id], Selectable: false, ModelCatalog: catalog.Authority})
+			reports = append(reports, modelReport{Route: id, Harness: id, Status: status, Tiers: membership[id], Selectable: true, ModelCatalog: catalog.Authority})
 		}
 	}
 	slices.SortFunc(reports, func(first modelReport, second modelReport) int {
@@ -224,9 +223,6 @@ func writeModelReports(reports []modelReport, stdout io.Writer) (int, error) {
 	}
 	for _, report := range reports {
 		line := fmt.Sprintf("%-*s  %-*s  tiers: %s", routeWidth, report.Route, statusWidth, report.Status, tiersText(report.Tiers))
-		if !report.Selectable {
-			line += "  (no model; not selectable with --model)"
-		}
 		if report.ModelCatalog == harness.ModelCatalogAdvisory {
 			line += "  (advisory catalog; other models may be available)"
 		}

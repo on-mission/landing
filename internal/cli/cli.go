@@ -37,7 +37,7 @@ const modelListHelp = `landing model list — list known model routes and catalo
 USAGE
   landing model list
 
-Each row is a known route in the harness/model form --model takes, the
+Each row is a known route in the harness or harness/model form --model takes, the
 harness's observed state, catalog authority, and the tiers that configure it.
 An advisory catalog may be incomplete: Landing passes a valid unlisted model to
 that harness, which decides whether it can run it. Detection runs; capacity is
@@ -53,7 +53,7 @@ const help = `landing — dispatch work through a configured tier or a named rou
 USAGE
   landing "<prompt>"
   landing --tier <name> "<prompt>"
-  landing --model <harness>/<model> "<prompt>"
+  landing --model <harness>[/<model>] "<prompt>"
   landing --reply <id> "<prompt>"
   landing meeting --arbiter <name> --persona <name> --persona <name> "<question>"
   landing comms [--inbox | --history | --agent <name> --message <text>]
@@ -71,7 +71,8 @@ INPUT
 
 OPTIONS
   --tier <name>                 Tier for a dispatch.
-  --model <harness>/<model>     Route for a dispatch, in place of a tier.
+  --model <harness>[/<model>]   Route for a dispatch, in place of a tier; omit
+                                the model for a harness that has none.
   --reply <id>                  Continue an existing thread.
   --persona <name>              Persona for a dispatch.
   --arbiter <name>              Persona that reads a meeting round.

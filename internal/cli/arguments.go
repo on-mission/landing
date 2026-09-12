@@ -294,14 +294,16 @@ func parseRoute(value string) (routeOption, error) {
 	return routeOption{Harness: harness, Model: &model}, nil
 }
 
-// parseModelRoute parses a dispatch's --model value. Unlike a tier route it
-// requires a model: --model exists so a caller can name one execution path
-// exactly, and a bare harness would hand the model choice back to the
-// harness's own default — the selection this option is for taking back.
+// parseModelRoute parses a dispatch's --model value. Some configured harnesses
+// carry no model, so a bare harness names that execution path exactly; a
+// harness/model value still pins both parts of the path.
 func parseModelRoute(value string) (routeOption, error) {
 	harnessName, model, hasModel := strings.Cut(value, "/")
-	if harnessName == "" || !hasModel || model == "" || strings.Contains(model, "/") {
-		return routeOption{}, &usageError{message: fmt.Sprintf("--model has invalid value %q; expected harness/model", value)}
+	if harnessName == "" || strings.Contains(model, "/") || (hasModel && model == "") {
+		return routeOption{}, &usageError{message: fmt.Sprintf("--model has invalid value %q; expected harness or harness/model", value)}
+	}
+	if !hasModel {
+		return routeOption{Harness: harnessName}, nil
 	}
 
 	return routeOption{Harness: harnessName, Model: &model}, nil

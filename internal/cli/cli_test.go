@@ -82,6 +82,35 @@ func TestParseArgumentsTerminatesFlagsAndAttachesFallback(t *testing.T) {
 	}
 }
 
+func TestParseArgumentsAcceptsModelWithAnOptionalModel(t *testing.T) {
+	tests := []struct {
+		name      string
+		arguments []string
+		want      routeOption
+		wantErr   bool
+	}{
+		{name: "bare harness", arguments: []string{"--model", "cline", "prompt"}, want: routeOption{Harness: "cline"}},
+		{name: "harness and model", arguments: []string{"--model", "grok/grok-4.5", "prompt"}, want: routeOption{Harness: "grok", Model: stringPointer("grok-4.5")}},
+		{name: "trailing slash", arguments: []string{"--model", "cline/", "prompt"}, wantErr: true},
+		{name: "multiple slashes", arguments: []string{"--model", "a/b/c", "prompt"}, wantErr: true},
+		{name: "empty harness", arguments: []string{"--model", "/model", "prompt"}, wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			values, _, err := parseArguments(test.arguments)
+			if test.wantErr {
+				if err == nil {
+					t.Fatalf("parseArguments(%q) accepted an invalid --model value", test.arguments)
+				}
+				return
+			}
+			if err != nil || values.Model == nil || values.Model.Harness != test.want.Harness || !equalStrings(values.Model.Model, test.want.Model) {
+				t.Fatalf("parseArguments(%q) = %#v, %v; want %#v, nil", test.arguments, values.Model, err, test.want)
+			}
+		})
+	}
+}
+
 func TestParseArgumentsRejectsRemovedCommsWaitOption(t *testing.T) {
 	if _, _, err := parseArguments([]string{"comms", "--wait", "2s"}); err == nil {
 		t.Fatal("parseArguments() accepted removed --wait option")

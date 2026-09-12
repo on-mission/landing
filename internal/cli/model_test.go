@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/on-mission/landing/internal/adapters"
 	"github.com/on-mission/landing/internal/config"
 	"github.com/on-mission/landing/internal/harness"
 	"github.com/on-mission/landing/internal/router"
@@ -87,16 +88,18 @@ func TestRunDispatchRejectsUnusableOrUnreachablePins(t *testing.T) {
 	}
 }
 
-func TestParseModelRouteRequiresAHarnessAndAModel(t *testing.T) {
+func TestParseModelRouteAcceptsAHarnessWithAnOptionalModel(t *testing.T) {
 	tests := []struct {
-		value     string
-		wantValid bool
+		value       string
+		wantHarness string
+		wantModel   *string
+		wantValid   bool
 	}{
-		{value: "grok/grok-4.6", wantValid: true},
-		{value: "grok", wantValid: false},
-		{value: "grok/", wantValid: false},
-		{value: "/grok-4.6", wantValid: false},
-		{value: "grok/a/b", wantValid: false},
+		{value: "cline", wantHarness: "cline", wantValid: true},
+		{value: "grok/grok-4.5", wantHarness: "grok", wantModel: stringPointer("grok-4.5"), wantValid: true},
+		{value: "cline/", wantValid: false},
+		{value: "/model", wantValid: false},
+		{value: "a/b/c", wantValid: false},
 		{value: "", wantValid: false},
 	}
 	for _, test := range tests {
@@ -105,11 +108,33 @@ func TestParseModelRouteRequiresAHarnessAndAModel(t *testing.T) {
 			if test.wantValid != (err == nil) {
 				t.Fatalf("parseModelRoute(%q) error = %v; want valid %t", test.value, err, test.wantValid)
 			}
-			parsed := config.Route{Harness: route.Harness, Model: route.Model}
-			if test.wantValid && parsed.String() != test.value {
-				t.Fatalf("parseModelRoute(%q) = %q, want the value it parsed", test.value, parsed.String())
+			if test.wantValid && (route.Harness != test.wantHarness || !equalStrings(route.Model, test.wantModel)) {
+				t.Fatalf("parseModelRoute(%q) = %#v, want harness %q and model %v", test.value, route, test.wantHarness, test.wantModel)
 			}
 		})
+	}
+}
+
+func TestRunDispatchLetsClaudeRejectAMissingPinnedModel(t *testing.T) {
+	directory := t.TempDir()
+	t.Setenv("LANDING_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	writeTestConfiguration(t, directory, `{"version":1,"defaultTier":"review","tiers":{"review":{"routes":[{"harness":"claude","model":"claude-sonnet-5"}]}}}`)
+	route, err := parseModelRoute("claude")
+	if err != nil {
+		t.Fatalf("parseModelRoute(claude) = %v", err)
+	}
+	adapter := readyAdapter{Adapter: adapters.NewClaude()}
+	code, err := runDispatch(
+		context.Background(),
+		Inputs{Stdin: strings.NewReader(""), Stdout: &bytes.Buffer{}, Stderr: &bytes.Buffer{}},
+		options{Model: &route},
+		[]string{"Review this decision."},
+		directory,
+		router.NewMapRegistry(map[string]harness.Adapter{"claude": adapter}),
+	)
+	var usage *usageError
+	if code != exitFailed || err == nil || !strings.Contains(err.Error(), "model is required for claude") || errors.As(err, &usage) {
+		t.Fatalf("runDispatch(--model claude) = %d, %v; want Claude's missing-model error, not a usage error", code, err)
 	}
 }
 
@@ -170,9 +195,9 @@ func TestListModelsNamesSupportedAndConfiguredRoutes(t *testing.T) {
 	if !strings.HasPrefix(lines[1], "recording/quick") || !strings.Contains(lines[1], "tiers: deep, review") {
 		t.Fatalf("listModels() line 1 = %q, want every tier that configures the route", lines[1])
 	}
-	// A harness with no model is reported, and says why --model cannot take it.
-	if !strings.HasPrefix(lines[2], "silent") || !strings.Contains(lines[2], "ready") || !strings.Contains(lines[2], "not selectable with --model") {
-		t.Fatalf("listModels() line 2 = %q, want a modelless harness reported as unselectable", lines[2])
+	// A harness with no model is reported as a route a caller can name directly.
+	if !strings.HasPrefix(lines[2], "silent") || !strings.Contains(lines[2], "ready") {
+		t.Fatalf("listModels() line 2 = %q, want a selectable modelless harness route", lines[2])
 	}
 }
 
@@ -249,6 +274,14 @@ type pinnedRouteAdapter struct {
 	authority harness.ModelCatalogAuthority
 	capacity  harness.Capacity
 	params    harness.StartParams
+}
+
+type readyAdapter struct {
+	harness.Adapter
+}
+
+func (adapter readyAdapter) Detect(context.Context) harness.Detection {
+	return harness.Detection{Status: harness.DetectionReady}
 }
 
 func (adapter *pinnedRouteAdapter) ID() string {
