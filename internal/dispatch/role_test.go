@@ -23,6 +23,10 @@ func TestRoleForResolvesTiersAndPinnedRoutes(t *testing.T) {
 		{name: "configured tier", role: stringPointer("engineer"), provider: "grok", want: "engineer"},
 		{name: "route the caller pinned", role: stringPointer("grok/grok-4.6"), provider: "grok", want: "grok/grok-4.6"},
 		{name: "route naming another provider", role: stringPointer("grok/grok-4.6"), provider: "codex", wantErr: `job "job-1" was created under tier "grok/grok-4.6"`},
+		// A harness with no pinnable model records just its name, so a reply must
+		// recognise it or the thread can never be continued.
+		{name: "model-less harness the caller pinned", role: stringPointer("cline"), provider: "cline", want: "cline"},
+		{name: "model-less route naming another provider", role: stringPointer("cline"), provider: "grok", wantErr: `job "job-1" was created under tier "cline"`},
 		{name: "removed tier", role: stringPointer("intern"), provider: "cline", wantErr: `job "job-1" was created under tier "intern"`},
 		{name: "no stored role", provider: "grok", wantErr: `job "job-1" has no stored tier`},
 	}

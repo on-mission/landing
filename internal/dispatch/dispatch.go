@@ -476,10 +476,27 @@ func roleFor(record harness.JobRecord, configuration config.Config) (string, err
 // isRouteRole reports whether a role names the route that actually ran this
 // job. Requiring the record's own provider keeps a tier name that has since
 // been removed from configuration from being read as a route.
+//
+// A harness with no pinnable model records just its own name, because that is
+// what Route.String() renders for it. Demanding a model here meant such a job
+// could be started and never continued: the reply read the bare harness name as
+// a tier, found none configured, and refused. cline is that harness today, and
+// every --model dispatch to it was a one-shot.
+//
+// If a tier were named after the harness a job ran on and then removed, that
+// job now resumes as a route instead of erroring. That is the right answer —
+// the job did run there — and a configured tier is still read first, so a live
+// tier of that name keeps its meaning.
 func isRouteRole(record harness.JobRecord, role string) bool {
 	harnessName, model, hasModel := strings.Cut(role, "/")
+	if harnessName != record.Provider {
+		return false
+	}
+	if !hasModel {
+		return true
+	}
 
-	return hasModel && harnessName == record.Provider && model != "" && !strings.Contains(model, "/")
+	return model != "" && !strings.Contains(model, "/")
 }
 
 func quotedTiers(tiers []string) string {
