@@ -19,14 +19,9 @@ func capacityDetection(path string, capacity harness.Capacity, detail string, au
 			Capacity: capacity,
 		}
 	}
-	if !capacity.HasGauge() {
-		return harness.Detection{
-			Status:   harness.DetectionReady,
-			Path:     path,
-			Capacity: capacity,
-			Detail:   detail,
-		}
-	}
+	// An explicit authentication failure makes an otherwise no-gauge harness
+	// ineligible: dispatch routes a logged-out Grok around rather than selecting
+	// it merely because its executable exists.
 	if authenticationFailure(detail, "") {
 		return harness.Detection{
 			Status:   harness.DetectionUnauthenticated,
@@ -35,7 +30,14 @@ func capacityDetection(path string, capacity harness.Capacity, detail string, au
 			Detail:   detail,
 		}
 	}
-
+	if !capacity.HasGauge() {
+		return harness.Detection{
+			Status:   harness.DetectionReady,
+			Path:     path,
+			Capacity: capacity,
+			Detail:   detail,
+		}
+	}
 	return harness.Detection{
 		Status:   harness.DetectionUnreadable,
 		Path:     path,

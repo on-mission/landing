@@ -469,17 +469,45 @@ func TestDetectionClassifiesObservedCapacity(t *testing.T) {
 			wantGauge: true,
 		},
 		{
-			name:      "reports ready when the harness has no gauge",
-			detect:    capacityDetection("/recorded/bin/cline", harness.NoCapacityGauge(), "Cline does not expose a capacity gauge.", clineAuthenticationFailure),
+			name: "reports unauthenticated when a no gauge harness says so",
+			detect: capacityDetection("/recorded/bin/grok", harness.NoCapacityGauge(), "You are not authenticated.", func(output, _ string) bool {
+				return grokAuthenticationFromProbe([]byte(output), nil) == grokAuthenticationUnauthenticated
+			}),
+			status:    harness.DetectionUnauthenticated,
+			wantPath:  "/recorded/bin/grok",
+			wantGauge: true,
+		},
+		{
+			name: "reports ready when a no gauge harness is authenticated",
+			detect: capacityDetection("/recorded/bin/grok", harness.NoCapacityGauge(), "You are logged in with grok.com.", func(output, _ string) bool {
+				return grokAuthenticationFromProbe([]byte(output), nil) == grokAuthenticationUnauthenticated
+			}),
 			status:    harness.DetectionReady,
-			wantPath:  "/recorded/bin/cline",
+			wantPath:  "/recorded/bin/grok",
 			wantGauge: false,
 		},
 		{
-			name:      "reports only the harness authentication failure it observed",
+			name: "reports ready when a no gauge harness is ambiguous",
+			detect: capacityDetection("/recorded/bin/grok", harness.NoCapacityGauge(), "Please sign in to continue.", func(output, _ string) bool {
+				return grokAuthenticationFromProbe([]byte(output), nil) == grokAuthenticationUnauthenticated
+			}),
+			status:    harness.DetectionReady,
+			wantPath:  "/recorded/bin/grok",
+			wantGauge: false,
+		},
+		{
+			name:      "reports an unreadable gauge authentication failure",
 			detect:    capacityDetection("/recorded/bin/grok", harness.UnknownCapacity(), string(grokAuthentication), grokAuthenticationFailure),
 			status:    harness.DetectionUnauthenticated,
 			wantPath:  "/recorded/bin/grok",
+			wantGauge: true,
+		},
+		{
+			name:      "reports ready when a readable gauge conflicts with auth output",
+			detect:    capacityDetection("/recorded/bin/grok", codexCapacityFromResult(codexPayload), "You are not authenticated.", func(string, string) bool { return true }),
+			status:    harness.DetectionReady,
+			wantPath:  "/recorded/bin/grok",
+			wantKnown: true,
 			wantGauge: true,
 		},
 		{
@@ -503,6 +531,50 @@ func TestDetectionClassifiesObservedCapacity(t *testing.T) {
 				t.Fatalf("capacityDetection() capacity = %#v, want gauge=%t", test.detect.Capacity, test.wantGauge)
 			}
 		})
+	}
+}
+
+func TestGrokAuthenticationProbeParsesOnlyRecognizedWords(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		err    error
+		want   grokAuthenticationStatus
+	}{
+		{name: "logged in", output: "You are logged in with grok.com.\nAvailable models:", want: grokAuthenticationAuthenticated},
+		{name: "not authenticated with zero exit status", output: "You are not authenticated.\n", want: grokAuthenticationUnauthenticated},
+		{name: "empty output", want: grokAuthenticationUnknown},
+		{name: "unrecognized output", output: "Please sign in to continue.", want: grokAuthenticationUnknown},
+		{name: "non-zero exit", output: "You are not authenticated.", err: os.ErrPermission, want: grokAuthenticationUnknown},
+		{name: "timeout", output: "You are not authenticated.", err: context.DeadlineExceeded, want: grokAuthenticationUnknown},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := grokAuthenticationFromProbe([]byte(test.output), test.err); got != test.want {
+				t.Fatalf("grokAuthenticationFromProbe(%q, %v) = %q, want %q", test.output, test.err, got, test.want)
+			}
+		})
+	}
+}
+
+func TestGrokAuthenticationProbeCachesResult(t *testing.T) {
+	reads := 0
+	adapter := &grokAdapter{
+		readAuthentication: func(context.Context, string) ([]byte, error) {
+			reads++
+			return []byte("You are not authenticated.\n"), nil
+		},
+	}
+
+	if got := adapter.probeGrokAuthentication(context.Background(), "grok"); got != grokAuthenticationUnauthenticated {
+		t.Fatalf("first probe = %q, want %q", got, grokAuthenticationUnauthenticated)
+	}
+	if got := adapter.probeGrokAuthentication(context.Background(), "grok"); got != grokAuthenticationUnauthenticated {
+		t.Fatalf("second probe = %q, want %q", got, grokAuthenticationUnauthenticated)
+	}
+	if reads != 1 {
+		t.Fatalf("probe read grok models %d times, want 1 cached read", reads)
 	}
 }
 

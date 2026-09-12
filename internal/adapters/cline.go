@@ -62,6 +62,9 @@ func (adapter *clineAdapter) Detect(ctx context.Context) harness.Detection {
 		return absentDetection()
 	}
 
+	// This intentionally remains ready: `cline config` requires both streams to
+	// be terminals, and `cline doctor` reports versions and hub-daemon diagnostics, not auth.
+	// When Cline exposes a non-interactive auth signal, apply Grok's treatment.
 	return capacityDetection(path, adapter.ProbeCapacity(ctx), "Cline does not expose a capacity gauge.", clineAuthenticationFailure)
 }
 

@@ -19,27 +19,43 @@ import (
 )
 
 const (
-	grokCapacityCacheTTL = time.Minute
-	grokModelsCacheTTL   = time.Minute
-	grokModelsTimeout    = 10 * time.Second
-	grokProtocolVersion  = "2025-06-18"
+	grokCapacityCacheTTL           = time.Minute
+	grokModelsCacheTTL             = time.Minute
+	grokModelsTimeout              = 10 * time.Second
+	grokAuthenticationCacheTTL     = time.Minute
+	grokAuthenticationProbeTimeout = 2 * time.Second
+	grokProtocolVersion            = "2025-06-18"
 )
 
 type grokModelsReader func(context.Context, string) ([]byte, error)
+type grokAuthenticationReader func(context.Context, string) ([]byte, error)
+
+type grokAuthenticationStatus string
+
+const (
+	grokAuthenticationUnknown         grokAuthenticationStatus = "unknown"
+	grokAuthenticationAuthenticated   grokAuthenticationStatus = "authenticated"
+	grokAuthenticationUnauthenticated grokAuthenticationStatus = "unauthenticated"
+)
 
 type grokAdapter struct {
-	mutex              sync.Mutex
-	command            string
-	resolutionErr      error
-	capacity           harness.Capacity
-	capacityExpiresAt  time.Time
-	capacityCached     bool
-	capacityInProgress chan struct{}
-	models             []string
-	modelsExpiresAt    time.Time
-	modelsCached       bool
-	modelsInProgress   chan struct{}
-	readModels         grokModelsReader
+	mutex                    sync.Mutex
+	command                  string
+	resolutionErr            error
+	capacity                 harness.Capacity
+	capacityExpiresAt        time.Time
+	capacityCached           bool
+	capacityInProgress       chan struct{}
+	models                   []string
+	modelsExpiresAt          time.Time
+	modelsCached             bool
+	modelsInProgress         chan struct{}
+	readModels               grokModelsReader
+	authentication           grokAuthenticationStatus
+	authenticationExpiresAt  time.Time
+	authenticationCached     bool
+	authenticationInProgress chan struct{}
+	readAuthentication       grokAuthenticationReader
 }
 
 type grokResult struct {
@@ -156,6 +172,77 @@ func runGrokModels(ctx context.Context, command string) ([]byte, error) {
 	return output, nil
 }
 
+func (adapter *grokAdapter) probeGrokAuthentication(ctx context.Context, command string) grokAuthenticationStatus {
+	ctx, cancel := context.WithTimeout(ctx, grokAuthenticationProbeTimeout)
+	defer cancel()
+
+	adapter.mutex.Lock()
+	if adapter.authenticationCached && adapter.authenticationExpiresAt.After(time.Now()) {
+		status := adapter.authentication
+		adapter.mutex.Unlock()
+		return status
+	}
+	if adapter.authenticationInProgress != nil {
+		inProgress := adapter.authenticationInProgress
+		adapter.mutex.Unlock()
+		select {
+		case <-inProgress:
+			adapter.mutex.Lock()
+			status := adapter.authentication
+			adapter.mutex.Unlock()
+			return status
+		case <-ctx.Done():
+			return grokAuthenticationUnknown
+		}
+	}
+
+	inProgress := make(chan struct{})
+	adapter.authenticationInProgress = inProgress
+	adapter.mutex.Unlock()
+
+	reader := adapter.readAuthentication
+	if reader == nil {
+		reader = runGrokAuthentication
+	}
+	output, err := reader(ctx, command)
+	status := grokAuthenticationFromProbe(output, err)
+
+	adapter.mutex.Lock()
+	adapter.authentication = status
+	adapter.authenticationCached = true
+	adapter.authenticationExpiresAt = time.Now().Add(grokAuthenticationCacheTTL)
+	adapter.authenticationInProgress = nil
+	close(inProgress)
+	adapter.mutex.Unlock()
+
+	return status
+}
+
+func runGrokAuthentication(ctx context.Context, command string) ([]byte, error) {
+	output, err := exec.CommandContext(ctx, command, "models").CombinedOutput()
+	if err != nil {
+		return output, fmt.Errorf("grok models authentication probe: %w", err)
+	}
+
+	return output, nil
+}
+
+func grokAuthenticationFromProbe(output []byte, err error) grokAuthenticationStatus {
+	if err != nil {
+		return grokAuthenticationUnknown
+	}
+
+	firstLine, _, _ := strings.Cut(string(output), "\n")
+	switch strings.TrimSpace(firstLine) {
+	case "You are logged in with grok.com.":
+		return grokAuthenticationAuthenticated
+	case "You are not authenticated.":
+		return grokAuthenticationUnauthenticated
+	default:
+		return grokAuthenticationUnknown
+	}
+}
+
 func parseGrokModels(output []byte) ([]string, error) {
 	availableModels := false
 	models := make([]string, 0)
@@ -206,7 +293,14 @@ func (adapter *grokAdapter) Detect(ctx context.Context) harness.Detection {
 	}
 
 	capacity, detail := adapter.readGrokCapacity(ctx, path)
-	return capacityDetection(path, capacity, detail, grokAuthenticationFailure)
+	if capacity.IsKnown() {
+		return capacityDetection(path, capacity, detail, grokAuthenticationFailure)
+	}
+
+	authentication := adapter.probeGrokAuthentication(ctx, path)
+	return capacityDetection(path, capacity, detail, func(string, string) bool {
+		return authentication == grokAuthenticationUnauthenticated || grokAuthenticationFailure(detail, "")
+	})
 }
 
 func (adapter *grokAdapter) Capabilities() harness.Capabilities {
