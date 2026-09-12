@@ -42,6 +42,24 @@ func (harnesses advisoryHarnesses) ModelCatalog(id string) harness.ModelCatalog 
 	return catalog
 }
 
+type validatingHarnesses struct {
+	staticHarnesses
+	validate func(string, []harness.ConfiguredRoute) error
+}
+
+func (harnesses validatingHarnesses) ValidateConfiguration(id string, routes []harness.ConfiguredRoute) error {
+	return harnesses.validate(id, routes)
+}
+
+func (harnesses validatingHarnesses) ModelCatalog(id string) harness.ModelCatalog {
+	catalog := harnesses.staticHarnesses.ModelCatalog(id)
+	if id == "cline" {
+		catalog.Authority = harness.ModelCatalogAdvisory
+	}
+
+	return catalog
+}
+
 var testHarnesses = staticHarnesses{
 	"claude": {"claude-sonnet-5", "claude-haiku-4-5-20251001"},
 	"cline":  nil,
@@ -354,6 +372,38 @@ func TestLoadValidatesHarnessModels(t *testing.T) {
 				t.Fatalf("Load() error = %q, want %q", err.Error(), wantError)
 			}
 		})
+	}
+}
+
+func TestLoadDelegatesConfiguredRoutesToTheirHarnesses(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, ConfigFileName)
+	writeConfiguration(t, path, []byte(`{"version":1,"tiers":{"alpha":{"routes":[{"harness":"cline","model":"provider/first"}]},"beta":{"routes":[{"harness":"cline","model":"provider/second"}]},"other":{"routes":[{"harness":"grok","model":"grok-4.6"}]}}}`))
+	calls := make(map[string][]harness.ConfiguredRoute)
+	harnesses := validatingHarnesses{
+		staticHarnesses: testHarnesses,
+		validate: func(id string, routes []harness.ConfiguredRoute) error {
+			calls[id] = append([]harness.ConfiguredRoute(nil), routes...)
+			if id != "cline" {
+				return nil
+			}
+
+			return fmt.Errorf("cline model %q at %s conflicts with cline model %q at %s; configure at most one cline model", *routes[0].Model, routes[0].Location, *routes[1].Model, routes[1].Location)
+		},
+	}
+	_, err := Load(context.Background(), root, harnesses)
+	if err == nil {
+		t.Fatal("Load() returned nil error, want the cline validator error")
+	}
+	want := fmt.Sprintf("configuration file %s is invalid: cline model %q at tier %q route 0 conflicts with cline model %q at tier %q route 0; configure at most one cline model", paths.Display(path), "provider/first", "alpha", "provider/second", "beta")
+	if err.Error() != want {
+		t.Fatalf("Load() error = %q, want %q", err.Error(), want)
+	}
+	if len(calls["cline"]) != 2 || len(calls["grok"]) != 1 {
+		t.Fatalf("validator calls = %#v, want cline's two routes and grok's one route", calls)
+	}
+	if calls["cline"][0].Location != `tier "alpha" route 0` || calls["cline"][1].Location != `tier "beta" route 0` {
+		t.Fatalf("cline validator routes = %#v, want stable configuration locations", calls["cline"])
 	}
 }
 

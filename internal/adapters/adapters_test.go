@@ -12,7 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/on-mission/landing/internal/config"
 	"github.com/on-mission/landing/internal/harness"
+	"github.com/on-mission/landing/internal/router"
 )
 
 func TestClaudeBuildRequestsCarryPermissionMode(t *testing.T) {
@@ -250,6 +252,126 @@ func TestClineThreadCaptureIgnoresNonStartEvents(t *testing.T) {
 	adapter.OnStdoutLine(`{"type":"hook_event","hookEventName":"agent_start","taskId":"cline-1"}`, record)
 	if record.ThreadID == nil || *record.ThreadID != "cline-1" {
 		t.Fatalf("start event capture = %#v, want cline-1", record.ThreadID)
+	}
+}
+
+func TestClineBuildStartPassesConfiguredModel(t *testing.T) {
+	adapter := &clineAdapter{command: "cline"}
+	model := "cline-pass/deepseek-v4-pro"
+	tests := []struct {
+		name   string
+		params harness.StartParams
+		want   []string
+	}{
+		{
+			name:   "configured model",
+			params: harness.StartParams{Prompt: "work", CWD: "/repo", Model: &model},
+			want:   []string{"--json", "--auto-approve", "true", "-c", "/repo", "-t", "900", "-m", model, "work"},
+		},
+		{
+			name:   "no configured model",
+			params: harness.StartParams{Prompt: "work", CWD: "/repo"},
+			want:   []string{"--json", "--auto-approve", "true", "-c", "/repo", "-t", "900", "work"},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request, err := adapter.BuildStart(test.params)
+			if err != nil || request.Command != "cline" || !reflect.DeepEqual(request.Args, test.want) {
+				t.Fatalf("BuildStart() = %#v, %v; want cline %#v", request, err, test.want)
+			}
+		})
+	}
+}
+
+func TestClineConfigurationAcceptsAtMostOneModel(t *testing.T) {
+	first := "cline-pass/deepseek-v4-pro"
+	second := "moonshotai/kimi-k2.5"
+	bare := "deepseek-v4-pro"
+	tests := []struct {
+		name   string
+		routes []harness.ConfiguredRoute
+		want   string
+	}{
+		{
+			name: "one model across routes",
+			routes: []harness.ConfiguredRoute{
+				{Location: `tier "engineer" route 0`, Model: &first},
+				{Location: `tier "intern" route 2`, Model: &first},
+			},
+		},
+		{
+			name: "no model",
+			routes: []harness.ConfiguredRoute{
+				{Location: `tier "engineer" route 0`},
+				{Location: `tier "intern" route 2`},
+			},
+		},
+		{
+			name: "conflicting models",
+			routes: []harness.ConfiguredRoute{
+				{Location: `tier "engineer" route 0`, Model: &first},
+				{Location: `tier "intern" route 2`, Model: &second},
+			},
+			want: `cline model "cline-pass/deepseek-v4-pro" at tier "engineer" route 0 conflicts with cline model "moonshotai/kimi-k2.5" at tier "intern" route 2; configure at most one cline model`,
+		},
+		{
+			name:   "bare model",
+			routes: []harness.ConfiguredRoute{{Location: `tier "engineer" route 0`, Model: &bare}},
+			want:   `cline model "deepseek-v4-pro" at tier "engineer" route 0 must use provider/model format`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := (&clineAdapter{}).ValidateConfiguration(test.routes)
+			if test.want == "" && err != nil {
+				t.Fatalf("ValidateConfiguration() = %v, want nil", err)
+			}
+			if test.want != "" && (err == nil || err.Error() != test.want) {
+				t.Fatalf("ValidateConfiguration() = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestClineConfigurationValidationRunsAtConfigurationLoad(t *testing.T) {
+	tests := []struct {
+		name     string
+		contents string
+		want     string
+	}{
+		{
+			name:     "one model",
+			contents: `{"version":1,"tiers":{"engineer":{"routes":[{"harness":"cline","model":"cline-pass/deepseek-v4-pro"}]},"intern":{"routes":[{"harness":"cline","model":"cline-pass/deepseek-v4-pro"}]}}}`,
+		},
+		{
+			name:     "no model",
+			contents: `{"version":1,"tiers":{"engineer":{"routes":[{"harness":"cline"}]}}}`,
+		},
+		{
+			name:     "conflicting models",
+			contents: `{"version":1,"tiers":{"engineer":{"routes":[{"harness":"cline","model":"cline-pass/deepseek-v4-pro"}]},"intern":{"routes":[{"harness":"cline","model":"moonshotai/kimi-k2.5"}]}}}`,
+			want:     `cline model "cline-pass/deepseek-v4-pro" at tier "engineer" route 0 conflicts with cline model "moonshotai/kimi-k2.5" at tier "intern" route 0; configure at most one cline model`,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			directory := t.TempDir()
+			path := filepath.Join(directory, config.ConfigFileName)
+			if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(test.contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := config.Load(context.Background(), directory, config.NewHarnesses(router.NewMapRegistry(map[string]harness.Adapter{"cline": NewCline()})))
+			if test.want == "" && err != nil {
+				t.Fatalf("Load() = %v, want nil", err)
+			}
+			if test.want != "" && (err == nil || !strings.Contains(err.Error(), test.want)) {
+				t.Fatalf("Load() = %v, want error containing %q", err, test.want)
+			}
+		})
 	}
 }
 
@@ -604,7 +726,7 @@ func TestAdapterModelsAreModuleOwned(t *testing.T) {
 		{name: "codex advisory catalog", adapter: NewCodex(), contains: []string{"gpt-5.6-terra", "gpt-5.3-codex-spark", "gpt-5.6-luna"}, authority: harness.ModelCatalogAdvisory},
 		{name: "claude advisory catalog", adapter: NewClaude(), contains: []string{"claude-sonnet-5", "claude-haiku-4-5-20251001"}, authority: harness.ModelCatalogAdvisory},
 		{name: "grok live listing catalog", adapter: grok, exact: []string{"grok-4.6", "grok-4.5"}, authority: harness.ModelCatalogAuthoritative},
-		{name: "cline no model catalog", adapter: NewCline(), exact: nil, authority: harness.ModelCatalogAuthoritative},
+		{name: "cline no model catalog", adapter: NewCline(), exact: nil, authority: harness.ModelCatalogAdvisory},
 	}
 
 	for _, test := range tests {

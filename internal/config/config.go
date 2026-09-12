@@ -117,6 +117,22 @@ func (harnesses registryHarnesses) ModelCatalog(id string) harness.ModelCatalog 
 	return adapter.ModelCatalog()
 }
 
+// ValidateConfiguration delegates any harness-specific configuration
+// invariants to the adapter that owns that harness. Adapters without the
+// optional capability deliberately have no additional validation.
+func (harnesses registryHarnesses) ValidateConfiguration(id string, routes []harness.ConfiguredRoute) error {
+	adapter, err := harnesses.registry.Resolve(id)
+	if err != nil {
+		return nil
+	}
+	validator, ok := adapter.(harness.ConfigValidator)
+	if !ok {
+		return nil
+	}
+
+	return validator.ValidateConfiguration(routes)
+}
+
 // ConfigFileName is the project configuration file Landing searches upward for.
 const ConfigFileName = ".landing/config.json"
 

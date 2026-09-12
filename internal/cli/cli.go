@@ -72,7 +72,8 @@ INPUT
 OPTIONS
   --tier <name>                 Tier for a dispatch.
   --model <harness>[/<model>]   Route for a dispatch, in place of a tier; omit
-                                the model for a harness that has none.
+                                the model for a harness that has none. Configure
+                                Cline provider/model values in project policy.
   --reply <id>                  Continue an existing thread.
   --persona <name>              Persona for a dispatch.
   --arbiter <name>              Persona that reads a meeting round.

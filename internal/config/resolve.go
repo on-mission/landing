@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/on-mission/landing/internal/paths"
 	"strings"
@@ -248,6 +249,7 @@ func validate(config Config, harnesses Harnesses) error {
 	problems := validatePolicy(config)
 	if harnesses != nil {
 		problems = append(problems, validateHarnesses(config, harnesses)...)
+		problems = append(problems, validateHarnessConfiguration(config, harnesses)...)
 	}
 
 	if len(problems) == 0 {
@@ -335,8 +337,52 @@ func validateHarnesses(config Config, harnesses Harnesses) []string {
 	return problems
 }
 
+type harnessConfigurationValidator interface {
+	ValidateConfiguration(string, []harness.ConfiguredRoute) error
+}
+
+func validateHarnessConfiguration(config Config, harnesses Harnesses) []string {
+	validator, ok := harnesses.(harnessConfigurationValidator)
+	if !ok {
+		return nil
+	}
+
+	ids := harnesses.IDs()
+	slices.Sort(ids)
+	known := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		known[id] = struct{}{}
+	}
+	routesByHarness := make(map[string][]harness.ConfiguredRoute)
+	for _, name := range config.TierNames() {
+		tier := config.Tiers[name]
+		for index, route := range tier.Routes {
+			if _, supported := known[route.Harness]; !supported {
+				continue
+			}
+			routesByHarness[route.Harness] = append(routesByHarness[route.Harness], harness.ConfiguredRoute{
+				Location: fmt.Sprintf("tier %q route %d", tier.Name, index),
+				Model:    route.Model,
+			})
+		}
+	}
+
+	problems := make([]string, 0)
+	for _, id := range ids {
+		routes := routesByHarness[id]
+		if len(routes) == 0 {
+			continue
+		}
+		if err := validator.ValidateConfiguration(id, routes); err != nil {
+			problems = append(problems, err.Error())
+		}
+	}
+
+	return problems
+}
+
 func validModelName(model string) bool {
-	return model != "" && !strings.Contains(model, "/")
+	return model != ""
 }
 
 func formatModels(models []string) string {

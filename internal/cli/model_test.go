@@ -115,6 +115,14 @@ func TestParseModelRouteAcceptsAHarnessWithAnOptionalModel(t *testing.T) {
 	}
 }
 
+func TestParseModelRouteDirectsQualifiedClineModelsToConfiguration(t *testing.T) {
+	_, err := parseModelRoute("cline/cline-pass/deepseek-v4-pro")
+	var usage *usageError
+	if !errors.As(err, &usage) || !strings.Contains(usage.message, "configure the Cline model in the project policy") {
+		t.Fatalf("parseModelRoute() error = %v, want a configuration direction", err)
+	}
+}
+
 func TestRunDispatchLetsClaudeRejectAMissingPinnedModel(t *testing.T) {
 	directory := t.TempDir()
 	t.Setenv("LANDING_STATE_DIR", filepath.Join(t.TempDir(), "state"))
@@ -248,6 +256,21 @@ func TestCatalogOutputMarksAdvisoryModelsAsIncomplete(t *testing.T) {
 	}
 	if !strings.Contains(modelOutput.String(), "recording/newly-released") {
 		t.Fatalf("listModels() output = %q, want configured advisory model", modelOutput.String())
+	}
+}
+
+func TestListModelsReportsConfiguredClineModel(t *testing.T) {
+	directory := t.TempDir()
+	writeTestConfiguration(t, directory, `{"version":1,"tiers":{"review":{"routes":[{"harness":"cline","model":"cline-pass/deepseek-v4-pro"}]}}}`)
+	registry := router.NewMapRegistry(map[string]harness.Adapter{
+		"cline": readyAdapter{Adapter: adapters.NewCline()},
+	})
+	stdout := &bytes.Buffer{}
+	if code, err := listModels(context.Background(), directory, registry, false, stdout); code != exitOK || err != nil {
+		t.Fatalf("listModels() = %d, %v; want %d, nil", code, err, exitOK)
+	}
+	if !strings.Contains(stdout.String(), "cline/cline-pass/deepseek-v4-pro") || !strings.Contains(stdout.String(), "tiers: review") {
+		t.Fatalf("listModels() output = %q, want the configured cline model", stdout.String())
 	}
 }
 

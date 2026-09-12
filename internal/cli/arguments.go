@@ -299,6 +299,9 @@ func parseRoute(value string) (routeOption, error) {
 // harness/model value still pins both parts of the path.
 func parseModelRoute(value string) (routeOption, error) {
 	harnessName, model, hasModel := strings.Cut(value, "/")
+	if harnessName == "cline" && strings.Contains(model, "/") {
+		return routeOption{}, &usageError{message: fmt.Sprintf("--model cannot name Cline provider/model value %q; configure the Cline model in the project policy", value)}
+	}
 	if harnessName == "" || strings.Contains(model, "/") || (hasModel && model == "") {
 		return routeOption{}, &usageError{message: fmt.Sprintf("--model has invalid value %q; expected harness or harness/model", value)}
 	}

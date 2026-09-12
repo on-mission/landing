@@ -240,6 +240,21 @@ type ModelCatalog struct {
 	Authority ModelCatalogAuthority
 }
 
+// ConfiguredRoute is the configuration a harness receives when it validates
+// the routes that name it. Location is caller-facing context supplied by the
+// configuration boundary.
+type ConfiguredRoute struct {
+	Location string
+	Model    *string
+}
+
+// ConfigValidator is an optional adapter capability for invariants that only a
+// harness can know. Configuration invokes it once for every supported harness
+// named by a project policy.
+type ConfigValidator interface {
+	ValidateConfiguration([]ConfiguredRoute) error
+}
+
 // Supports reports whether Landing can reject a requested model before the
 // harness runs. An advisory catalog deliberately leaves that decision to the
 // harness, which is the only authority for models it cannot enumerate.

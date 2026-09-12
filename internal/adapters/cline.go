@@ -42,6 +42,7 @@ type clineEvent struct {
 }
 
 var _ harness.Adapter = (*clineAdapter)(nil)
+var _ harness.ConfigValidator = (*clineAdapter)(nil)
 
 func NewCline() harness.Adapter {
 	return &clineAdapter{}
@@ -52,7 +53,32 @@ func (adapter *clineAdapter) ID() string {
 }
 
 func (adapter *clineAdapter) ModelCatalog() harness.ModelCatalog {
-	return harness.ModelCatalog{Authority: harness.ModelCatalogAuthoritative}
+	return harness.ModelCatalog{Authority: harness.ModelCatalogAdvisory}
+}
+
+func (adapter *clineAdapter) ValidateConfiguration(routes []harness.ConfiguredRoute) error {
+	var configured *harness.ConfiguredRoute
+	for index := range routes {
+		route := &routes[index]
+		if route.Model == nil || *route.Model == "" {
+			continue
+		}
+		modelType, modelID, hasModelType := strings.Cut(*route.Model, "/")
+		if !hasModelType || modelType == "" || modelID == "" || strings.Contains(modelID, "/") {
+			return fmt.Errorf("cline model %q at %s must use provider/model format", *route.Model, route.Location)
+		}
+		if configured == nil {
+			configured = route
+			continue
+		}
+		if *configured.Model == *route.Model {
+			continue
+		}
+
+		return fmt.Errorf("cline model %q at %s conflicts with cline model %q at %s; configure at most one cline model", *configured.Model, configured.Location, *route.Model, route.Location)
+	}
+
+	return nil
 }
 
 func (adapter *clineAdapter) Detect(ctx context.Context) harness.Detection {
