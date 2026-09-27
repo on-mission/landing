@@ -24,12 +24,10 @@ var (
 )
 
 const (
-	defaultDispatchTimeout = 30 * time.Minute
-	defaultReplyTimeout    = 10 * time.Minute
-	progressInterval       = 30 * time.Second
-	exitOK                 = 0
-	exitFailed             = 1
-	exitUsage              = 2
+	progressInterval = 30 * time.Second
+	exitOK           = 0
+	exitFailed       = 1
+	exitUsage        = 2
 )
 
 const modelListHelp = `landing model list — list known model routes and catalog authority.
@@ -80,8 +78,7 @@ OPTIONS
   --cast <persona>=<route>      Pin one meeting participant to harness/model.
   --cwd <path>                  Dispatch working directory.
   --label <text>                Dispatch label.
-  --timeout <ms>                Dispatch timeout; 1800000 by default,
-                                or 600000 for replies.
+  --timeout <ms>                Dispatch timeout; no limit by default.
   --prompt-file <path>          Prompt file; takes precedence over argv and stdin.
   --instructions-file <path>    Persona instructions for persona add or update.
   --route <harness>/<model>     Tier route; model may be omitted.
@@ -132,7 +129,7 @@ OPTIONS
   --prompt-file <path>          Question file; takes precedence over argv and stdin.
   --cwd <path>                  Dispatch working directory.
   --label <text>                Dispatch label.
-  --timeout <ms>                Round timeout; 1800000 by default.
+  --timeout <ms>                Round timeout; no limit by default.
   --json                        JSON output.
   --help, -h                    Help.
 `

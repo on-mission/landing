@@ -88,11 +88,11 @@ func Run(ctx context.Context, dispatcher Dispatcher, request Request) (Result, e
 	if request.Question == "" {
 		return Result{}, fmt.Errorf("meeting question is empty")
 	}
-	if request.Timeout <= 0 {
-		return Result{}, fmt.Errorf("meeting timeout is not positive")
+	if request.Timeout < 0 {
+		return Result{}, fmt.Errorf("meeting timeout is negative")
 	}
 
-	meetingContext, cancel := context.WithTimeout(ctx, request.Timeout)
+	meetingContext, cancel := meetingContext(ctx, request.Timeout)
 	defer cancel()
 	positions := dispatchParticipants(meetingContext, dispatcher, request)
 	result := Result{
@@ -113,6 +113,14 @@ func Run(ctx context.Context, dispatcher Dispatcher, request Request) (Result, e
 	}
 
 	return result, nil
+}
+
+func meetingContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout == 0 {
+		return ctx, func() {}
+	}
+
+	return context.WithTimeout(ctx, timeout)
 }
 
 func dispatchParticipants(ctx context.Context, dispatcher Dispatcher, request Request) []Position {

@@ -343,12 +343,9 @@ func resolvePrompt(promptFile parsedOption, positionals []string, stdin io.Reade
 	return strings.TrimSpace(string(contents)), nil
 }
 
-func resolveTimeout(reply bool, supplied parsedOption) (time.Duration, error) {
+func resolveTimeout(supplied parsedOption) (time.Duration, error) {
 	if !supplied.Set {
-		if reply {
-			return defaultReplyTimeout, nil
-		}
-		return defaultDispatchTimeout, nil
+		return 0, nil
 	}
 	milliseconds, err := strconv.ParseFloat(supplied.Value, 64)
 	if err != nil || math.IsNaN(milliseconds) || math.IsInf(milliseconds, 0) || milliseconds <= 0 || milliseconds > float64(math.MaxInt64)/float64(time.Millisecond) {

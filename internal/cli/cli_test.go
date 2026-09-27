@@ -374,11 +374,8 @@ func TestPromptPrecedenceAndTimeoutDefaults(t *testing.T) {
 	if err != nil || prompt != "from file" {
 		t.Fatalf("resolvePrompt() = %q, %v; want file prompt", prompt, err)
 	}
-	if timeout, err := resolveTimeout(false, parsedOption{}); err != nil || timeout != defaultDispatchTimeout {
-		t.Fatalf("resolveTimeout(dispatch) = %v, %v; want %v", timeout, err, defaultDispatchTimeout)
-	}
-	if timeout, err := resolveTimeout(true, parsedOption{}); err != nil || timeout != defaultReplyTimeout {
-		t.Fatalf("resolveTimeout(reply) = %v, %v; want %v", timeout, err, defaultReplyTimeout)
+	if timeout, err := resolveTimeout(parsedOption{}); err != nil || timeout != 0 {
+		t.Fatalf("resolveTimeout() = %v, %v; want 0, nil", timeout, err)
 	}
 }
 

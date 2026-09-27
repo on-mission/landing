@@ -18,8 +18,6 @@ import (
 	"github.com/on-mission/landing/internal/router"
 )
 
-const defaultAwaitTimeout = 10 * time.Minute
-
 type Request struct {
 	Tier         string
 	Prompt       string
@@ -154,6 +152,7 @@ func (engine *Engine) Reply(ctx context.Context, request ReplyRequest) (Response
 		CWD:            original.CWD,
 		Label:          label,
 		Role:           stringPointer(role),
+		Timeout:        timeoutPointer(request.AwaitTimeout),
 		BeforeSpawn:    registration.beforeSpawn,
 	})
 	if err != nil {
@@ -214,6 +213,7 @@ func (engine *Engine) dispatch(ctx context.Context, tier config.Tier, request Re
 		RoutedBecause: stringPointer(route.RoutedBecause),
 		Capacity:      route.Capacities[adapter.ID()],
 		RoutingScore:  route.Score,
+		Timeout:       timeoutPointer(request.AwaitTimeout),
 		BeforeSpawn:   registration.beforeSpawn,
 	})
 	if err != nil {
@@ -258,6 +258,7 @@ func (engine *Engine) dispatchCast(ctx context.Context, role string, request Req
 		Model:         model,
 		RoutedBecause: stringPointer(reason),
 		Capacity:      harness.UnknownCapacity(),
+		Timeout:       timeoutPointer(request.AwaitTimeout),
 		BeforeSpawn:   registration.beforeSpawn,
 	})
 	if err != nil {
@@ -285,13 +286,13 @@ func (engine *Engine) awaitCast(ctx context.Context, role string, request Reques
 func (engine *Engine) awaitDispatch(ctx context.Context, tier config.Tier, request Request, selectedPersona *harness.Persona, initial *harness.JobRecord, initialThread *threadParticipant) (Response, error) {
 	current := initial
 	thread := initialThread
-	awaitTimeout := normalizedTimeout(request.AwaitTimeout)
-	waitContext, cancel := context.WithTimeout(ctx, awaitTimeout)
+	awaitTimeout := request.AwaitTimeout
+	waitContext, cancel := awaitContext(ctx, awaitTimeout)
 	defer cancel()
 	for {
 		finished, err := engine.jobs.Wait(waitContext, current.JobID)
 		if err != nil {
-			if !errors.Is(err, context.DeadlineExceeded) {
+			if awaitTimeout == 0 || !errors.Is(err, context.DeadlineExceeded) {
 				return Response{}, err
 			}
 			timedOut, timeoutMessage, timeoutErr := engine.jobs.AbandonTimedOut(context.Background(), current.JobID, awaitTimeout)
@@ -316,7 +317,7 @@ func (engine *Engine) awaitDispatch(ctx context.Context, tier config.Tier, reque
 		}
 		reroute, err := engine.router.Resolve(waitContext, tier)
 		if err != nil {
-			if errors.Is(err, context.DeadlineExceeded) {
+			if awaitTimeout != 0 && errors.Is(err, context.DeadlineExceeded) {
 				timedOut, timeoutMessage, timeoutErr := engine.jobs.AbandonTimedOut(context.Background(), finished.JobID, awaitTimeout)
 				if timeoutErr != nil {
 					return Response{}, timeoutErr
@@ -349,6 +350,7 @@ func (engine *Engine) awaitDispatch(ctx context.Context, tier config.Tier, reque
 			RoutingScore:  reroute.Score,
 			RerouteCount:  1,
 			ReroutedFrom:  stringPointer(finished.JobID),
+			Timeout:       timeoutPointer(request.AwaitTimeout),
 			BeforeSpawn:   nextRegistration.beforeSpawn,
 		})
 		if err != nil {
@@ -381,19 +383,18 @@ func resolvePersona(ctx context.Context, name string, cwd string) (*harness.Pers
 }
 
 func (engine *Engine) await(ctx context.Context, jobID string, timeout time.Duration, thread *threadParticipant) (*harness.JobRecord, string, error) {
-	awaitTimeout := normalizedTimeout(timeout)
-	waitContext, cancel := context.WithTimeout(ctx, awaitTimeout)
+	waitContext, cancel := awaitContext(ctx, timeout)
 	defer cancel()
 	record, err := engine.jobs.Wait(waitContext, jobID)
 	if err == nil {
 		thread.finish(record)
 		return record, "", nil
 	}
-	if !errors.Is(err, context.DeadlineExceeded) {
+	if timeout == 0 || !errors.Is(err, context.DeadlineExceeded) {
 		return nil, "", err
 	}
 
-	record, message, err := engine.jobs.AbandonTimedOut(context.Background(), jobID, awaitTimeout)
+	record, message, err := engine.jobs.AbandonTimedOut(context.Background(), jobID, timeout)
 	if err == nil {
 		thread.finish(record)
 	}
@@ -511,12 +512,20 @@ func quotedTiers(tiers []string) string {
 	return strings.Join(quoted, ", ")
 }
 
-func normalizedTimeout(timeout time.Duration) time.Duration {
-	if timeout <= 0 {
-		return defaultAwaitTimeout
+func awaitContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	if timeout == 0 {
+		return ctx, func() {}
 	}
 
-	return timeout
+	return context.WithTimeout(ctx, timeout)
+}
+
+func timeoutPointer(timeout time.Duration) *time.Duration {
+	if timeout == 0 {
+		return nil
+	}
+
+	return &timeout
 }
 
 func stringPointer(value string) *string {
