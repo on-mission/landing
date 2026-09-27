@@ -181,6 +181,10 @@ func TestAwaitUsesTimeoutOnlyWhenCallerSuppliesOne(t *testing.T) {
 	t.Setenv("LANDING_DISPATCH_TIMEOUT_HELPER", "1")
 	store := jobs.NewStore(context.Background())
 	engine := New(nil, store, config.Config{})
+	// Created before the cleanup below is registered, so it is removed after
+	// the helper processes have exited: Windows refuses to delete a directory
+	// a running process still uses as its working directory.
+	cwd := t.TempDir()
 	jobIDs := make([]string, 0, 2)
 	t.Cleanup(func() {
 		store.Shutdown(context.Background())
@@ -191,7 +195,7 @@ func TestAwaitUsesTimeoutOnlyWhenCallerSuppliesOne(t *testing.T) {
 		}
 	})
 
-	withoutTimeout, err := store.Start(context.Background(), timeoutLifecycleAdapter{}, jobs.StartOptions{CWD: t.TempDir()})
+	withoutTimeout, err := store.Start(context.Background(), timeoutLifecycleAdapter{}, jobs.StartOptions{CWD: cwd})
 	if err != nil {
 		t.Fatalf("Start() returned unexpected error: %v", err)
 	}
@@ -206,7 +210,7 @@ func TestAwaitUsesTimeoutOnlyWhenCallerSuppliesOne(t *testing.T) {
 		t.Fatalf("job after await() without a timeout = %#v, exists %t; want running", running, ok)
 	}
 
-	withTimeout, err := store.Start(context.Background(), timeoutLifecycleAdapter{}, jobs.StartOptions{CWD: t.TempDir()})
+	withTimeout, err := store.Start(context.Background(), timeoutLifecycleAdapter{}, jobs.StartOptions{CWD: cwd})
 	if err != nil {
 		t.Fatalf("Start() returned unexpected error: %v", err)
 	}
