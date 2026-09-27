@@ -266,12 +266,12 @@ func TestClineBuildStartPassesConfiguredModel(t *testing.T) {
 		{
 			name:   "configured model",
 			params: harness.StartParams{Prompt: "work", CWD: "/repo", Model: &model},
-			want:   []string{"--json", "--auto-approve", "true", "-c", "/repo", "-t", "900", "-m", model, "work"},
+			want:   []string{"--json", "--auto-approve", "true", "-c", "/repo", "-m", model, "work"},
 		},
 		{
 			name:   "no configured model",
 			params: harness.StartParams{Prompt: "work", CWD: "/repo"},
-			want:   []string{"--json", "--auto-approve", "true", "-c", "/repo", "-t", "900", "work"},
+			want:   []string{"--json", "--auto-approve", "true", "-c", "/repo", "work"},
 		},
 	}
 	for _, test := range tests {
@@ -869,10 +869,19 @@ func TestGrokAuthenticationFailureDescribesCommandOwnership(t *testing.T) {
 
 func TestClineTimeoutArgument(t *testing.T) {
 	timeout := 1500 * time.Millisecond
-	if got := clineTimeoutArgument(nil); got != "900" {
-		t.Fatalf("default timeout = %q, want 900", got)
+	adapter := &clineAdapter{command: "cline"}
+	withoutTimeout, err := adapter.BuildStart(harness.StartParams{CWD: "/tmp"})
+	if err != nil {
+		t.Fatalf("BuildStart() returned unexpected error: %v", err)
 	}
-	if got := clineTimeoutArgument(&timeout); got != "1.5" {
-		t.Fatalf("explicit timeout = %q, want 1.5", got)
+	if slices.Contains(withoutTimeout.Args, "-t") {
+		t.Fatalf("BuildStart() args = %q; want no timeout argument", withoutTimeout.Args)
+	}
+	withTimeout, err := adapter.BuildStart(harness.StartParams{CWD: "/tmp", Timeout: &timeout})
+	if err != nil {
+		t.Fatalf("BuildStart() returned unexpected error: %v", err)
+	}
+	if got := withTimeout.Args; !slices.Contains(got, "-t") || !slices.Contains(got, "1.5") {
+		t.Fatalf("BuildStart() args = %q; want -t 1.5", got)
 	}
 }

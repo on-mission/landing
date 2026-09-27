@@ -45,7 +45,7 @@ func runDispatch(ctx context.Context, inputs Inputs, values options, positionals
 	if prompt == "" {
 		return exitUsage, &usageError{message: "the resolved prompt is empty"}
 	}
-	timeout, err := resolveTimeout(isReply, values.Timeout)
+	timeout, err := resolveTimeout(values.Timeout)
 	if err != nil {
 		return exitUsage, err
 	}
@@ -100,7 +100,7 @@ func runMeeting(ctx context.Context, inputs Inputs, values options, positionals 
 	if err != nil {
 		return exitUsage, err
 	}
-	timeout, err := resolveTimeout(false, values.Timeout)
+	timeout, err := resolveTimeout(values.Timeout)
 	if err != nil {
 		return exitUsage, err
 	}

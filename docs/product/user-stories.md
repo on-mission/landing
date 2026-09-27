@@ -215,6 +215,18 @@ the selected harness supports it.
 If continuity is unavailable, Landing says so rather than pretending a fresh
 conversation contains the prior context.
 
+### Wait for work to finish
+
+As a caller, I want Landing to wait for dispatches, supported thread
+continuations, and meeting rounds until they reach a terminal state, so that it
+does not abandon work that takes hours.
+
+Landing has no default wait limit. I can background the CLI and
+continue other work while it waits. When I pass `--timeout`, Landing stops
+waiting, terminates the relevant harness work, reports `timeout`, and keeps an
+ordinary-work thread continuable. The underlying harness receives no time limit
+unless I chose one.
+
 ## Meet across personas
 
 ### Choose the participants for this task

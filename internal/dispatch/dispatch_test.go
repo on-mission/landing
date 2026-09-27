@@ -2,11 +2,15 @@ package dispatch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/on-mission/landing/internal/config"
 	"github.com/on-mission/landing/internal/harness"
@@ -171,4 +175,96 @@ func TestReplyReportsRemovedStoredTier(t *testing.T) {
 	if !strings.Contains(err.Error(), "job \"job-123\" was created under tier \"intern\"") || !strings.Contains(err.Error(), "configured tiers are \"engineer\"") {
 		t.Fatalf("Reply() error = %q, want stored and configured tier names", err)
 	}
+}
+
+func TestAwaitUsesTimeoutOnlyWhenCallerSuppliesOne(t *testing.T) {
+	t.Setenv("LANDING_DISPATCH_TIMEOUT_HELPER", "1")
+	store := jobs.NewStore(context.Background())
+	engine := New(nil, store, config.Config{})
+	// Created before the cleanup below is registered, so it is removed after
+	// the helper processes have exited: Windows refuses to delete a directory
+	// a running process still uses as its working directory.
+	cwd := t.TempDir()
+	jobIDs := make([]string, 0, 2)
+	t.Cleanup(func() {
+		store.Shutdown(context.Background())
+		for _, jobID := range jobIDs {
+			if _, err := store.Wait(context.Background(), jobID); err != nil {
+				t.Errorf("Wait(%q) during cleanup returned unexpected error: %v", jobID, err)
+			}
+		}
+	})
+
+	withoutTimeout, err := store.Start(context.Background(), timeoutLifecycleAdapter{}, jobs.StartOptions{CWD: cwd})
+	if err != nil {
+		t.Fatalf("Start() returned unexpected error: %v", err)
+	}
+	jobIDs = append(jobIDs, withoutTimeout.JobID)
+	deadline, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+	if _, _, err := engine.await(deadline, withoutTimeout.JobID, 0, nil); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("await() without a timeout error = %v; want deadline exceeded", err)
+	}
+	running, ok := store.Get(withoutTimeout.JobID)
+	if !ok || running.Status != harness.JobStatusRunning {
+		t.Fatalf("job after await() without a timeout = %#v, exists %t; want running", running, ok)
+	}
+
+	withTimeout, err := store.Start(context.Background(), timeoutLifecycleAdapter{}, jobs.StartOptions{CWD: cwd})
+	if err != nil {
+		t.Fatalf("Start() returned unexpected error: %v", err)
+	}
+	jobIDs = append(jobIDs, withTimeout.JobID)
+	timedOut, message, err := engine.await(context.Background(), withTimeout.JobID, time.Millisecond, nil)
+	if err != nil {
+		t.Fatalf("await() with a timeout returned unexpected error: %v", err)
+	}
+	if timedOut.Status != harness.JobStatusTimeout || message == "" {
+		t.Fatalf("await() with a timeout = %#v, %q; want a timeout record and message", timedOut, message)
+	}
+}
+
+type timeoutLifecycleAdapter struct{}
+
+func (timeoutLifecycleAdapter) ID() string { return "timeout" }
+
+func (timeoutLifecycleAdapter) ModelCatalog() harness.ModelCatalog {
+	return harness.ModelCatalog{Authority: harness.ModelCatalogAuthoritative}
+}
+
+func (timeoutLifecycleAdapter) Detect(context.Context) harness.Detection {
+	return harness.Detection{Status: harness.DetectionAbsent, Capacity: harness.UnknownCapacity()}
+}
+
+func (timeoutLifecycleAdapter) Capabilities() harness.Capabilities { return harness.Capabilities{} }
+
+func (timeoutLifecycleAdapter) Validate(harness.StartParams) error { return nil }
+
+func (timeoutLifecycleAdapter) BuildStart(harness.StartParams) (harness.Request, error) {
+	return harness.Request{Command: os.Args[0], Args: []string{"-test.run=^TestDispatchTimeoutHelper$"}}, nil
+}
+
+func (adapter timeoutLifecycleAdapter) BuildResume(harness.ResumeParams) (harness.Request, error) {
+	return adapter.BuildStart(harness.StartParams{})
+}
+
+func (timeoutLifecycleAdapter) OnStdoutLine(string, *harness.JobRecord) {}
+
+func (timeoutLifecycleAdapter) Finalize(context.Context, harness.FinalizeParams) (harness.Finalized, error) {
+	return harness.Finalized{Status: harness.JobStatusDone}, nil
+}
+
+func (timeoutLifecycleAdapter) ProbeCapacity(context.Context) harness.Capacity {
+	return harness.UnknownCapacity()
+}
+
+func (timeoutLifecycleAdapter) SpawnPath() string { return "" }
+
+func TestDispatchTimeoutHelper(t *testing.T) {
+	if os.Getenv("LANDING_DISPATCH_TIMEOUT_HELPER") != "1" {
+		return
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
+	defer stop()
+	<-ctx.Done()
 }

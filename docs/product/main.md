@@ -144,6 +144,14 @@ receives a result. Naming a tier is optional when the project has a default
 tier. Continuing an existing thread is an option on that same ordinary
 invocation when its harness supports continuity.
 
+Landing waits until a dispatch, supported thread continuation, or
+meeting round reaches its terminal state, however long that takes. A caller can
+background the CLI and continue other work; waiting hours is supported. A
+caller who wants a ceiling passes `--timeout`; only then does Landing stop
+waiting, terminate the relevant harness work, and report `timeout`. An
+ordinary-work thread remains continuable after timeout. Landing never supplies
+an underlying harness with a time limit that the caller did not request.
+
 Landing first interprets input as a command. Management commands name the
 managed thing before the action, which keeps their surface predictable for a
 caller that cannot ask questions. Input that does not match a command is a

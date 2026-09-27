@@ -174,7 +174,7 @@ func TestValidateRejectsUsageStates(t *testing.T) {
 }
 
 func testRequest() Request {
-	return Request{Question: "question", Personas: []string{"optimist", "skeptic", "observer"}, Arbiter: "chair", Tier: "review", CWD: "/tmp", Timeout: time.Second}
+	return Request{Question: "question", Personas: []string{"optimist", "skeptic", "observer"}, Arbiter: "chair", Tier: "review", CWD: "/tmp"}
 }
 
 type fakeDispatcher struct {

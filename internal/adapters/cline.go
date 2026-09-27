@@ -16,10 +16,7 @@ import (
 	"github.com/on-mission/landing/internal/harness"
 )
 
-const (
-	clineDefaultTimeout      = 900 * time.Second
-	clineMinimumMajorVersion = 3
-)
+const clineMinimumMajorVersion = 3
 
 type clineAdapter struct {
 	mutex         sync.Mutex
@@ -118,8 +115,9 @@ func (adapter *clineAdapter) BuildStart(params harness.StartParams) (harness.Req
 		"true",
 		"-c",
 		params.CWD,
-		"-t",
-		clineTimeoutArgument(params.Timeout),
+	}
+	if params.Timeout != nil {
+		args = append(args, "-t", clineTimeoutArgument(*params.Timeout))
 	}
 	if params.Model != nil && *params.Model != "" {
 		args = append(args, "-m", *params.Model)
@@ -307,11 +305,7 @@ func noCompatibleClineError(directories []string, versions []clineVersionResult)
 	}, "\n")
 }
 
-func clineTimeoutArgument(timeout *time.Duration) string {
-	if timeout == nil {
-		return strconv.FormatInt(int64(clineDefaultTimeout/time.Second), 10)
-	}
-
+func clineTimeoutArgument(timeout time.Duration) string {
 	return strconv.FormatFloat(timeout.Seconds(), 'f', -1, 64)
 }
 
