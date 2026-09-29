@@ -15,10 +15,6 @@ perspective. Provider and model selection are normally an implementation detail
 rather than a recurring user decision. A caller who has a reason to make that
 decision is not required to turn it into project policy first.
 
-[DEFERRED] The model-target, `latest`, validation, and multi-route meeting-seat
-behavior in this document is decided product behavior that Landing does not yet
-provide.
-
 ## Work, personas, and execution
 
 Landing treats three concerns independently:

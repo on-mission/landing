@@ -29,7 +29,7 @@ authentication readiness, their remaining capacity, and the models each can
 authoritatively enumerate or otherwise names as useful examples. It marks an
 example list as incomplete, so the agent does not mistake it for a closed
 provider catalog. If the agent supplies an unsupported harness, Landing fails
-clearly. [DEFERRED] A harness-qualified model Landing does not know is accepted and
+clearly. A harness-qualified model Landing does not know is accepted and
 validated before Landing writes the policy; model lists aid inference and never
 refuse a model.
 
@@ -91,7 +91,7 @@ a route, model, harness, or tier.
 ### 4. Validate and apply
 
 Landing validates the complete requested policy before writing it. A request
-that names an unavailable harness fails clearly. [DEFERRED] A model that
+that names an unavailable harness fails clearly. A model that
 validates as invalid or unverified also fails clearly; Landing accepts an
 unfamiliar harness-qualified model and uses live provider evidence or a minimal
 probe to validate it.

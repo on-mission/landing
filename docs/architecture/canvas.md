@@ -70,7 +70,7 @@ Direct configuration receives shape validation when Configuration resolver
 reads it, without a model probe. Its concrete models validate when their routes
 are used.
 
-### Model target resolution and validation [DEFERRED]
+### Model target resolution and validation
 
 Turns every caller-written model target, and every concrete model Configuration
 authoring supplies, into one or more concrete routes before it is accepted for
@@ -127,7 +127,7 @@ retry and honest thread continuation. It is not a durable background queue.
 
 ### Meeting round convener
 
-Owns one explicitly requested meeting round. [DEFERRED] Its seat and preflight
+Owns one explicitly requested meeting round. Its seat and preflight
 contract treats a seat—one persona on one concrete route—as its unit of
 dispatch, reporting, and handoff to the arbiter; the same persona may occupy
 several seats. It resolves the caller-selected participants, seats, and

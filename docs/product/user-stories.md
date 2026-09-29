@@ -110,7 +110,7 @@ machine-specific account state.
 
 I can see the resolved project configuration file that supplies the policy.
 
-### [DEFERRED] Set this project's current-model choice
+### Set this project's current-model choice
 
 As a project owner, I want to override Landing's `latest` choice for one
 harness so that my project's policy uses the frontier model I consider right for
@@ -176,7 +176,7 @@ responsibility for reviewing and integrating the result. These responsibilities
 do not assume that one agent is larger, smaller, more senior, or tied to a
 particular model.
 
-### [DEFERRED] Name the model target for this work
+### Name the model target for this work
 
 As a user or lead agent, I want to name the model target for one request so that
 work whose point is a particular model runs on it.
@@ -253,7 +253,7 @@ of the route selected for its work. Naming several personas for ordinary work
 does not convene a meeting. A meeting requires an arbiter and at least two
 participants besides it.
 
-### [DEFERRED] Hear one perspective from several models
+### Hear one perspective from several models
 
 As a user, I want to seat a persona on several routes in one meeting so that I
 can compare independent answers without manually convening the same perspective
@@ -274,7 +274,7 @@ defined perspective to read the positions and identify genuine disagreement.
 
 I can also seat the arbiter as a participant. Landing runs those responsibilities
 in separate contexts, so the arbiter can advance its own position without its
-participant instance influencing its judgment. [DEFERRED] I can cast the
+participant instance influencing its judgment. I can cast the
 arbiter to one specific route, but not to a target that resolves to several
 routes.
 

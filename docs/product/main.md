@@ -136,7 +136,7 @@ default for unnamed work. Without a default, the caller names a configured tier;
 Landing does not choose one.
 
 When the model itself is the request, a caller names a model target instead of
-a tier, and Landing reports the routes available to name. [DEFERRED] A target
+a tier, and Landing reports the routes available to name. A target
 can name a route, an inferred known model, a harness's `latest`, `latest` across
 harnesses, a tier's primary routes, or a comma-separated combination. Ordinary
 work needs one resolved route; meetings can use several. This stays the
@@ -188,7 +188,7 @@ hierarchy based on model size, cost, or status.
 
 For a consequential question, a lead agent can convene a meeting: one round of
 a deliberation protocol. It names an arbiter and at least two participants
-besides it. [DEFERRED] A seat is one persona on one route, so a persona may
+besides it. A seat is one persona on one route, so a persona may
 hold several seats and offer the same perspective through several models. A cast
 resolves a model target into seats; the arbiter may be cast to exactly one route.
 Landing gives every participant seat a clean, independent context with the
@@ -197,7 +197,7 @@ reading of genuine conflict to the lead agent. An arbiter is a persona with a
 perspective, not a neutral position, and may also participate through a separate
 instance and context.
 
-[DEFERRED] Landing validates every distinct participant and arbiter route before it
+Landing validates every distinct participant and arbiter route before it
 dispatches a seat. An invalid or unverified route stops the meeting before it
 spends on participant work. A seat that becomes unavailable after validation is
 reported, never dropped; the meeting continues with the positions that answer
@@ -222,12 +222,12 @@ and return a different kind of result, so they remain an optional workflow.
 Landing chooses among the routes in the requested tier using known capability,
 availability, preference, and failure state. Quality, latency, cost, and context
 requirements are valid policy inputs as the product can measure them honestly.
-[DEFERRED] `latest` names Landing's current frontier default for each harness with one;
+`latest` names Landing's current frontier default for each harness with one;
 projects can override that choice per harness, and the resolved route is
 reported. Model hints help Landing resolve known short names, but do not refuse
 an unfamiliar harness-qualified model.
 
-A request that names its own target skips this selection. [DEFERRED] Landing validates each
+A request that names its own target skips this selection. Landing validates each
 resolved route through live provider evidence or a minimal probe, then runs it
 or reports it as valid, invalid, or unverified. An unverified route does not
 dispatch, and Landing never substitutes another. The small validation probe is
