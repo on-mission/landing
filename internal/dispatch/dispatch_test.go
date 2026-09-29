@@ -34,6 +34,45 @@ func TestDispatchReportsRequestedTierAndConfiguredTiers(t *testing.T) {
 	}
 }
 
+func TestTierDispatchRecoversFromModelValidationFailure(t *testing.T) {
+	t.Setenv("LANDING_STATE_DIR", t.TempDir())
+	project := conversationTestProject(t)
+	invalidModel := "missing"
+	validModel := "available"
+	invalid := &validationLifecycleAdapter{id: "invalid", validation: harness.InvalidModel("provider rejected missing")}
+	valid := &validationLifecycleAdapter{id: "valid", validation: harness.ValidModel("probe returned a reply")}
+	store := jobs.NewStore(context.Background())
+	t.Cleanup(func() { store.Shutdown(context.Background()) })
+	engine := New(router.New(router.NewMapRegistry(map[string]harness.Adapter{"invalid": invalid, "valid": valid})), store, config.Config{Tiers: map[string]config.Tier{
+		"engineer": {Name: "engineer", Routes: []config.Route{{Harness: "invalid", Model: &invalidModel}, {Harness: "valid", Model: &validModel}}},
+	}})
+	response, err := engine.Dispatch(context.Background(), Request{Tier: "engineer", Prompt: "work", CWD: project})
+	if err != nil {
+		t.Fatalf("Dispatch(tier validation fallback) returned unexpected error: %v", err)
+	}
+	if response.Provider != "valid" || valid.starts != 1 || invalid.starts != 0 {
+		t.Fatalf("Dispatch(tier validation fallback) = %#v; starts invalid=%d valid=%d; want only valid replacement route", response, invalid.starts, valid.starts)
+	}
+}
+
+func TestNamedRouteRefusesModelValidationFailureWithoutSubstitution(t *testing.T) {
+	t.Setenv("LANDING_STATE_DIR", t.TempDir())
+	project := conversationTestProject(t)
+	model := "missing"
+	invalid := &validationLifecycleAdapter{id: "invalid", validation: harness.InvalidModel("provider rejected missing")}
+	valid := &validationLifecycleAdapter{id: "valid", validation: harness.ValidModel("probe returned a reply")}
+	store := jobs.NewStore(context.Background())
+	t.Cleanup(func() { store.Shutdown(context.Background()) })
+	engine := New(router.New(router.NewMapRegistry(map[string]harness.Adapter{"invalid": invalid, "valid": valid})), store, config.Config{})
+	_, err := engine.Dispatch(context.Background(), Request{Prompt: "work", CWD: project, Route: &config.Route{Harness: "invalid", Model: &model}})
+	if err == nil || !strings.Contains(err.Error(), "model invalid/missing is invalid") {
+		t.Fatalf("Dispatch(named validation failure) error = %v, want named model rejection", err)
+	}
+	if invalid.starts != 0 || valid.starts != 0 {
+		t.Fatalf("Dispatch(named validation failure) started invalid=%d valid=%d routes, want none", invalid.starts, valid.starts)
+	}
+}
+
 func TestReplyKeepsInitialConversationRecord(t *testing.T) {
 	project := conversationTestProject(t)
 	state := t.TempDir()
@@ -100,10 +139,69 @@ func conversationTestProject(t *testing.T) string {
 
 type conversationLifecycleAdapter struct{}
 
+type validationLifecycleAdapter struct {
+	id         string
+	validation harness.ModelValidation
+	starts     int
+}
+
+func (adapter *validationLifecycleAdapter) ID() string {
+	return adapter.id
+}
+
+func (adapter *validationLifecycleAdapter) ModelCatalog() harness.ModelCatalog {
+	return harness.ModelCatalog{Authority: harness.ModelCatalogAdvisory}
+}
+
+func (adapter *validationLifecycleAdapter) ValidateModel(context.Context, string) harness.ModelValidation {
+	return adapter.validation
+}
+
+func (adapter *validationLifecycleAdapter) Detect(context.Context) harness.Detection {
+	return harness.Detection{Status: harness.DetectionReady}
+}
+
+func (adapter *validationLifecycleAdapter) Capabilities() harness.Capabilities {
+	return harness.Capabilities{}
+}
+
+func (adapter *validationLifecycleAdapter) Validate(harness.StartParams) error {
+	return nil
+}
+
+func (adapter *validationLifecycleAdapter) BuildStart(harness.StartParams) (harness.Request, error) {
+	adapter.starts++
+	return harness.Request{Command: os.Args[0], Args: []string{"-test.run=^TestValidationLifecycleHelper$"}}, nil
+}
+
+func (adapter *validationLifecycleAdapter) BuildResume(harness.ResumeParams) (harness.Request, error) {
+	return adapter.BuildStart(harness.StartParams{})
+}
+
+func (adapter *validationLifecycleAdapter) OnStdoutLine(string, *harness.JobRecord) {}
+
+func (adapter *validationLifecycleAdapter) Finalize(context.Context, harness.FinalizeParams) (harness.Finalized, error) {
+	return harness.Finalized{Status: harness.JobStatusDone}, nil
+}
+
+func (adapter *validationLifecycleAdapter) ProbeCapacity(context.Context) harness.Capacity {
+	return harness.UnknownCapacity()
+}
+
+func (adapter *validationLifecycleAdapter) SpawnPath() string {
+	return ""
+}
+
+func TestValidationLifecycleHelper(t *testing.T) {}
+
 func (conversationLifecycleAdapter) ID() string { return "fake" }
 
 func (conversationLifecycleAdapter) ModelCatalog() harness.ModelCatalog {
 	return harness.ModelCatalog{Authority: harness.ModelCatalogAuthoritative}
+}
+
+func (conversationLifecycleAdapter) ValidateModel(context.Context, string) harness.ModelValidation {
+	return harness.ValidModel("test validation")
 }
 
 func (conversationLifecycleAdapter) Detect(context.Context) harness.Detection {
@@ -230,6 +328,10 @@ func (timeoutLifecycleAdapter) ID() string { return "timeout" }
 
 func (timeoutLifecycleAdapter) ModelCatalog() harness.ModelCatalog {
 	return harness.ModelCatalog{Authority: harness.ModelCatalogAuthoritative}
+}
+
+func (timeoutLifecycleAdapter) ValidateModel(context.Context, string) harness.ModelValidation {
+	return harness.ValidModel("test validation")
 }
 
 func (timeoutLifecycleAdapter) Detect(context.Context) harness.Detection {

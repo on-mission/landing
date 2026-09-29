@@ -63,9 +63,11 @@ import (
 	"slices"
 
 	"github.com/on-mission/landing/internal/harness"
+	"github.com/on-mission/landing/internal/modelvalidation"
 )
 
-// Harnesses is the capability catalog configuration validates against.
+// Harnesses is the capability catalog configuration validates named harnesses
+// against.
 //
 // It is deliberately not a routing policy. Which harnesses exist and which
 // models each can reach is owned by the harness modules themselves; the
@@ -73,15 +75,14 @@ import (
 // from that opinion would make a supported harness unconfigurable merely
 // because no default tier happened to mention it.
 //
-// Each harness module owns how it obtains its catalog and whether that catalog
-// is authoritative. Configuration keeps the early error from a complete
-// catalog, while passing an unknown advisory model through to its harness.
+// Each harness module owns its hints and validates a concrete model only when
+// an authoring operation or dispatch needs that evidence. Hints never refuse a
+// model.
 type Harnesses interface {
 	// IDs are the harness identifiers this build supports.
 	IDs() []string
 
-	// ModelCatalog returns model information for the named harness. An unknown
-	// harness returns an empty authoritative catalog.
+	// ModelCatalog returns model hints for the named harness.
 	ModelCatalog(id string) harness.ModelCatalog
 }
 
@@ -131,6 +132,17 @@ func (harnesses registryHarnesses) ValidateConfiguration(id string, routes []har
 	}
 
 	return validator.ValidateConfiguration(routes)
+}
+
+// ValidateModel checks a concrete model before configuration authoring writes
+// it. Loading direct configuration remains shape-only and never spends a probe.
+func (harnesses registryHarnesses) ValidateModel(ctx context.Context, id string, model string) harness.ModelValidation {
+	adapter, err := harnesses.registry.Resolve(id)
+	if err != nil {
+		return harness.UnverifiedModel("the configured harness could not be resolved")
+	}
+
+	return modelvalidation.Validate(ctx, adapter, model)
 }
 
 // ConfigFileName is the project configuration file Landing searches upward for.

@@ -319,18 +319,34 @@ func validateHarnesses(config Config, harnesses Harnesses) []string {
 			if route.Model == nil {
 				continue
 			}
-			catalog := harnesses.ModelCatalog(route.Harness)
-			if catalog.Supports(*route.Model) {
+		}
+	}
+
+	return problems
+}
+
+type modelValidator interface {
+	ValidateModel(context.Context, string, string) harness.ModelValidation
+}
+
+func validateModels(ctx context.Context, config Config, harnesses Harnesses) []string {
+	validator, ok := harnesses.(modelValidator)
+	if !ok {
+		return nil
+	}
+
+	problems := make([]string, 0)
+	for _, name := range config.TierNames() {
+		tier := config.Tiers[name]
+		for _, route := range tier.Routes {
+			if route.Model == nil || *route.Model == "" {
 				continue
 			}
-			problems = append(problems, fmt.Sprintf(
-				"tier %q route %d field \"model\" has unsupported value %q for harness %q; supported models are %s",
-				tier.Name,
-				index,
-				*route.Model,
-				route.Harness,
-				formatModels(catalog.Models),
-			))
+			validation := validator.ValidateModel(ctx, route.Harness, *route.Model)
+			if validation.Status == harness.ModelValid {
+				continue
+			}
+			problems = append(problems, fmt.Sprintf("model %s is %s: %s", route.String(), validation.Status, validation.Evidence))
 		}
 	}
 

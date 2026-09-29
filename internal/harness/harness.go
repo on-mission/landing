@@ -224,8 +224,8 @@ type Detection struct {
 	Detail string
 }
 
-// ModelCatalogAuthority states whether the harness supplied a complete model
-// catalog or only useful known names.
+// ModelCatalogAuthority describes the provenance of a model hint list. Neither
+// kind is a model-acceptance gate.
 type ModelCatalogAuthority string
 
 const (
@@ -233,11 +233,43 @@ const (
 	ModelCatalogAdvisory      ModelCatalogAuthority = "advisory"
 )
 
-// ModelCatalog is the model information a harness can report without implying
-// that every known name is a complete catalog.
+// ModelCatalog is the model-hint information a harness can report. It helps a
+// caller discover routes but never proves another model cannot run.
 type ModelCatalog struct {
 	Models    []string
+	Aliases   map[string]string
+	Latest    string
 	Authority ModelCatalogAuthority
+}
+
+// ModelValidationStatus is the outcome of asking a harness whether it can run
+// one exact model. It is intentionally closed: callers may dispatch only a
+// valid model and must preserve an inconclusive result rather than guessing.
+type ModelValidationStatus string
+
+const (
+	ModelValid      ModelValidationStatus = "valid"
+	ModelInvalid    ModelValidationStatus = "invalid"
+	ModelUnverified ModelValidationStatus = "unverified"
+)
+
+// ModelValidation is normalized evidence from the adapter that owns a
+// harness's provider protocol.
+type ModelValidation struct {
+	Status   ModelValidationStatus
+	Evidence string
+}
+
+func ValidModel(evidence string) ModelValidation {
+	return ModelValidation{Status: ModelValid, Evidence: evidence}
+}
+
+func InvalidModel(evidence string) ModelValidation {
+	return ModelValidation{Status: ModelInvalid, Evidence: evidence}
+}
+
+func UnverifiedModel(evidence string) ModelValidation {
+	return ModelValidation{Status: ModelUnverified, Evidence: evidence}
 }
 
 // ConfiguredRoute is the configuration a harness receives when it validates
@@ -255,30 +287,17 @@ type ConfigValidator interface {
 	ValidateConfiguration([]ConfiguredRoute) error
 }
 
-// Supports reports whether Landing can reject a requested model before the
-// harness runs. An advisory catalog deliberately leaves that decision to the
-// harness, which is the only authority for models it cannot enumerate.
-func (catalog ModelCatalog) Supports(model string) bool {
-	if catalog.Authority == ModelCatalogAdvisory {
-		return true
-	}
-
-	for _, candidate := range catalog.Models {
-		if model == candidate {
-			return true
-		}
-	}
-
-	return false
-}
-
 type Adapter interface {
 	ID() string
 
-	// ModelCatalog reports known models and whether the catalog is exhaustive.
-	// An advisory catalog passes a syntactically valid unknown model to the
-	// harness, which remains the authority for accepting it.
+	// ModelCatalog reports known models, aliases, and a shipped latest default.
+	// Its contents are always advisory for acceptance.
 	ModelCatalog() ModelCatalog
+
+	// ValidateModel determines whether this harness can serve model. It must
+	// return ModelInvalid only for the harness's definitive rejection; every
+	// other failed probe is ModelUnverified.
+	ValidateModel(context.Context, string) ModelValidation
 
 	// Detect reports whether this harness is usable on this machine. It must
 	// not spend execution capacity.
@@ -311,6 +330,8 @@ const (
 	ErrorCodeThreadNotFound            ErrorCode = "THREAD_NOT_FOUND"
 	ErrorCodeContinuationUnsupported   ErrorCode = "CONTINUATION_UNSUPPORTED"
 	ErrorCodeNoProviderAvailable       ErrorCode = "NO_PROVIDER_AVAILABLE"
+	ErrorCodeModelInvalid              ErrorCode = "MODEL_INVALID"
+	ErrorCodeModelUnverified           ErrorCode = "MODEL_UNVERIFIED"
 	ErrorCodeJobLost                   ErrorCode = "JOB_LOST"
 	ErrorCodeInternal                  ErrorCode = "INTERNAL_ERROR"
 )
@@ -329,6 +350,8 @@ func ParseErrorCode(value string) (ErrorCode, error) {
 		ErrorCodeThreadNotFound,
 		ErrorCodeContinuationUnsupported,
 		ErrorCodeNoProviderAvailable,
+		ErrorCodeModelInvalid,
+		ErrorCodeModelUnverified,
 		ErrorCodeJobLost,
 		ErrorCodeInternal:
 		return code, nil

@@ -18,6 +18,7 @@ import (
 	"github.com/on-mission/landing/internal/jobs"
 	"github.com/on-mission/landing/internal/journal"
 	"github.com/on-mission/landing/internal/meeting"
+	"github.com/on-mission/landing/internal/modelvalidation"
 	"github.com/on-mission/landing/internal/paths"
 	"github.com/on-mission/landing/internal/router"
 )
@@ -85,16 +86,16 @@ func runMeeting(ctx context.Context, inputs Inputs, values options, positionals 
 	if err != nil {
 		return exitUsage, err
 	}
+	configuration, err := loadConfiguration(ctx, invocationDir, registry)
+	if err != nil {
+		return exitUsage, err
+	}
 	casts, err := meetingCasts(ctx, values.Casts, values.Personas, registry)
 	if err != nil {
 		return exitUsage, err
 	}
 	if prompt == "" {
 		return exitUsage, &usageError{message: "the resolved meeting question is empty"}
-	}
-	configuration, err := loadConfiguration(ctx, invocationDir, registry)
-	if err != nil {
-		return exitUsage, err
 	}
 	tier, err := selectTier(values.Tier, false, *configuration)
 	if err != nil {
@@ -172,9 +173,11 @@ func pinnedRoute(ctx context.Context, option routeOption, registry router.Regist
 	if detection.Status == harness.DetectionAbsent || detection.Status == harness.DetectionUnauthenticated {
 		return config.Route{}, &usageError{message: fmt.Sprintf("%s names harness %q with observed state %q", subject, option.Harness, detection.Status)}
 	}
-	catalog := adapter.ModelCatalog()
-	if option.Model != nil && !catalog.Supports(*option.Model) {
-		return config.Route{}, &usageError{message: fmt.Sprintf("%s names model %q, which harness %q cannot reach; reachable models are %s", subject, *option.Model, option.Harness, quotedModels(catalog.Models))}
+	if option.Model != nil {
+		validation := modelvalidation.Validate(ctx, adapter, *option.Model)
+		if validation.Status != harness.ModelValid {
+			return config.Route{}, &usageError{message: fmt.Sprintf("model %s/%s is %s: %s", option.Harness, *option.Model, validation.Status, validation.Evidence)}
+		}
 	}
 
 	return config.Route{Harness: option.Harness, Model: option.Model}, nil

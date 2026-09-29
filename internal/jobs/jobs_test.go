@@ -268,6 +268,10 @@ func (adapter *lifecycleAdapter) ModelCatalog() harness.ModelCatalog {
 	return harness.ModelCatalog{Authority: harness.ModelCatalogAuthoritative}
 }
 
+func (adapter *lifecycleAdapter) ValidateModel(context.Context, string) harness.ModelValidation {
+	return harness.ValidModel("test validation")
+}
+
 func (adapter *lifecycleAdapter) Detect(context.Context) harness.Detection {
 	return harness.Detection{Status: harness.DetectionAbsent, Capacity: harness.UnknownCapacity()}
 }

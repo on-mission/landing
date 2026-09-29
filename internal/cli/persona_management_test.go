@@ -212,6 +212,10 @@ func (adapter *personaDispatchAdapter) ModelCatalog() harness.ModelCatalog {
 	return harness.ModelCatalog{Authority: harness.ModelCatalogAuthoritative}
 }
 
+func (adapter *personaDispatchAdapter) ValidateModel(context.Context, string) harness.ModelValidation {
+	return harness.ValidModel("test validation")
+}
+
 func (adapter *personaDispatchAdapter) Detect(context.Context) harness.Detection {
 	return harness.Detection{Status: harness.DetectionReady, Capacity: adapter.ProbeCapacity(context.Background())}
 }

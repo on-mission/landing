@@ -114,15 +114,15 @@ func TestMeetingHelpCarriesTheProtocol(t *testing.T) {
 	}
 }
 
-func TestMeetingCastsAcceptOutsideTierAndRejectUnreachableModel(t *testing.T) {
+func TestMeetingCastsAcceptOutsideTierAndValidateModel(t *testing.T) {
 	registry := router.NewMapRegistry(map[string]harness.Adapter{"remote": castAdapter{models: []string{"outside-tier"}}})
 	casts, err := meetingCasts(context.Background(), []castOption{{Persona: "one", Route: routeOption{Harness: "remote", Model: modelPointer("outside-tier")}}}, []string{"one", "two"}, registry)
 	if err != nil || casts["one"].Harness != "remote" {
 		t.Fatalf("meetingCasts() = %#v, %v, want cast outside tier", casts, err)
 	}
 	_, err = meetingCasts(context.Background(), []castOption{{Persona: "one", Route: routeOption{Harness: "remote", Model: modelPointer("missing")}}}, []string{"one", "two"}, registry)
-	if err == nil || !strings.Contains(err.Error(), `reachable models are "outside-tier"`) {
-		t.Fatalf("meetingCasts() error = %v, want reachable model list", err)
+	if err != nil {
+		t.Fatalf("meetingCasts() error = %v, want adapter validation", err)
 	}
 }
 
@@ -149,6 +149,10 @@ func (adapter castAdapter) ID() string { return "remote" }
 
 func (adapter castAdapter) ModelCatalog() harness.ModelCatalog {
 	return harness.ModelCatalog{Models: append([]string(nil), adapter.models...), Authority: harness.ModelCatalogAuthoritative}
+}
+
+func (adapter castAdapter) ValidateModel(context.Context, string) harness.ModelValidation {
+	return harness.ValidModel("test validation")
 }
 
 func (adapter castAdapter) Detect(context.Context) harness.Detection {

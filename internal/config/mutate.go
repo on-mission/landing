@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/on-mission/landing/internal/paths"
 )
@@ -153,6 +154,12 @@ func mutate(ctx context.Context, configPath string, harnesses Harnesses, change 
 		return false, invalidConfigError(
 			fmt.Sprintf("configuration file %s is invalid", paths.Display(path)),
 			err,
+		)
+	}
+	if problems := validateModels(ctx, configuration, harnesses); len(problems) > 0 {
+		return false, invalidConfigError(
+			fmt.Sprintf("configuration file %s has models that could not be validated", paths.Display(path)),
+			errors.New(strings.Join(problems, "; ")),
 		)
 	}
 

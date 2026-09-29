@@ -21,6 +21,7 @@ type harnessReport struct {
 	Path         string                        `json:"path,omitempty"`
 	Capacity     capacityReport                `json:"capacity"`
 	Models       []string                      `json:"models"`
+	Latest       string                        `json:"latest,omitempty"`
 	ModelCatalog harness.ModelCatalogAuthority `json:"modelCatalog"`
 	Detail       string                        `json:"detail,omitempty"`
 }
@@ -50,7 +51,7 @@ func listHarnesses(ctx context.Context, registry router.Registry, asJSON bool, s
 		}
 		detection := adapter.Detect(ctx)
 		catalog := adapter.ModelCatalog()
-		reports = append(reports, harnessReport{Name: id, Status: detection.Status, Path: detection.Path, Capacity: capacityReport{Known: detection.Capacity.IsKnown(), NoGauge: !detection.Capacity.HasGauge(), Buckets: detection.Capacity.Buckets()}, Models: catalog.Models, ModelCatalog: catalog.Authority, Detail: detection.Detail})
+		reports = append(reports, harnessReport{Name: id, Status: detection.Status, Path: detection.Path, Capacity: capacityReport{Known: detection.Capacity.IsKnown(), NoGauge: !detection.Capacity.HasGauge(), Buckets: detection.Capacity.Buckets()}, Models: catalog.Models, Latest: catalog.Latest, ModelCatalog: catalog.Authority, Detail: detection.Detail})
 	}
 	if asJSON {
 		encoded, err := json.MarshalIndent(reports, "", "  ")
@@ -77,6 +78,11 @@ func writeHarnessReports(reports []harnessReport, stdout io.Writer) (int, error)
 		}
 		if _, err := fmt.Fprintf(stdout, "  capacity: %s\n  models: %s\n", capacityText(report.Capacity), modelsText(report.Models, report.ModelCatalog)); err != nil {
 			return exitFailed, err
+		}
+		if report.Latest != "" {
+			if _, err := fmt.Fprintf(stdout, "  latest: %s\n", report.Latest); err != nil {
+				return exitFailed, err
+			}
 		}
 		if report.Detail != "" {
 			if _, err := fmt.Fprintf(stdout, "  detail: %s\n", report.Detail); err != nil {
@@ -127,6 +133,7 @@ type modelReport struct {
 	Tiers        []string                      `json:"tiers"`
 	Selectable   bool                          `json:"selectable"`
 	ModelCatalog harness.ModelCatalogAuthority `json:"modelCatalog"`
+	Latest       string                        `json:"latest,omitempty"`
 }
 
 // listModels reports every route a caller can name, from the harnesses Landing
@@ -150,21 +157,21 @@ func listModels(ctx context.Context, invocationDir string, registry router.Regis
 		models := catalog.Models
 		for _, model := range models {
 			route := config.Route{Harness: id, Model: &model}
-			reports = append(reports, modelReport{Route: route.String(), Harness: id, Model: model, Status: status, Tiers: membership[route.String()], Selectable: true, ModelCatalog: catalog.Authority})
+			reports = append(reports, modelReport{Route: route.String(), Harness: id, Model: model, Status: status, Tiers: membership[route.String()], Selectable: true, ModelCatalog: catalog.Authority, Latest: catalog.Latest})
 		}
 		for route, tiers := range membership {
 			harnessID, model, hasModel := strings.Cut(route, "/")
 			if harnessID != id || !hasModel || slices.Contains(models, model) {
 				continue
 			}
-			reports = append(reports, modelReport{Route: route, Harness: id, Model: model, Status: status, Tiers: tiers, Selectable: true, ModelCatalog: catalog.Authority})
+			reports = append(reports, modelReport{Route: route, Harness: id, Model: model, Status: status, Tiers: tiers, Selectable: true, ModelCatalog: catalog.Authority, Latest: catalog.Latest})
 		}
 		// A harness may expose no model at all, and a tier may configure one
 		// without naming a model. Either way it is an execution path a caller
 		// can name with --model.
 		_, configuredBare := membership[id]
 		if configuredBare || len(models) == 0 {
-			reports = append(reports, modelReport{Route: id, Harness: id, Status: status, Tiers: membership[id], Selectable: true, ModelCatalog: catalog.Authority})
+			reports = append(reports, modelReport{Route: id, Harness: id, Status: status, Tiers: membership[id], Selectable: true, ModelCatalog: catalog.Authority, Latest: catalog.Latest})
 		}
 	}
 	slices.SortFunc(reports, func(first modelReport, second modelReport) int {
@@ -225,6 +232,9 @@ func writeModelReports(reports []modelReport, stdout io.Writer) (int, error) {
 		line := fmt.Sprintf("%-*s  %-*s  tiers: %s", routeWidth, report.Route, statusWidth, report.Status, tiersText(report.Tiers))
 		if report.ModelCatalog == harness.ModelCatalogAdvisory {
 			line += "  (advisory catalog; other models may be available)"
+		}
+		if report.Latest != "" {
+			line += "  latest: " + report.Latest
 		}
 		if _, err := fmt.Fprintln(stdout, line); err != nil {
 			return exitFailed, err

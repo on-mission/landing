@@ -94,8 +94,43 @@ func (adapter *grokAdapter) ID() string {
 func (adapter *grokAdapter) ModelCatalog() harness.ModelCatalog {
 	return harness.ModelCatalog{
 		Models:    adapter.catalogModels(),
-		Authority: harness.ModelCatalogAuthoritative,
+		Latest:    "grok-4.7",
+		Authority: harness.ModelCatalogAdvisory,
 	}
+}
+
+func (adapter *grokAdapter) ValidateModel(ctx context.Context, model string) harness.ModelValidation {
+	models, err := adapter.listGrokModels(ctx)
+	if err == nil && grokModelListed(models, model) {
+		return harness.ValidModel("model was present in grok models")
+	}
+	command, err := adapter.resolveGrokCommand()
+	if err != nil {
+		return harness.UnverifiedModel("could not start a Grok model probe")
+	}
+	probe := runModelProbe(ctx, command, []string{
+		"-p", "Say hi",
+		"--output-format", "json",
+		"--cwd", ".",
+		"--permission-mode", "plan",
+		"--no-subagents",
+		"--disable-web-search",
+		"-m", model,
+	}, nil)
+	if grokUnknownModel(probe.output()) {
+		return harness.InvalidModel(rejectionEvidence(probe.output(), grokUnknownModel))
+	}
+	result := parseGrokResult(probe.stdout)
+	if probe.err == nil && result != nil && result.Text != nil && *result.Text != "" {
+		return harness.ValidModel("model probe returned a reply")
+	}
+
+	return harness.UnverifiedModel(probeFailureEvidence(probe))
+}
+
+func grokUnknownModel(output string) bool {
+	lower := strings.ToLower(output)
+	return strings.Contains(lower, "couldn't set model") && strings.Contains(lower, "unknown model id")
 }
 
 func (adapter *grokAdapter) catalogModels() []string {

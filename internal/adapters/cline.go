@@ -19,9 +19,10 @@ import (
 const clineMinimumMajorVersion = 3
 
 type clineAdapter struct {
-	mutex         sync.Mutex
-	command       string
-	resolutionErr error
+	mutex           sync.Mutex
+	command         string
+	resolutionErr   error
+	configuredModel string
 }
 
 type clineVersionResult struct {
@@ -75,7 +76,55 @@ func (adapter *clineAdapter) ValidateConfiguration(routes []harness.ConfiguredRo
 		return fmt.Errorf("cline model %q at %s conflicts with cline model %q at %s; configure at most one cline model", *configured.Model, configured.Location, *route.Model, route.Location)
 	}
 
+	adapter.mutex.Lock()
+	defer adapter.mutex.Unlock()
+	if configured == nil {
+		adapter.configuredModel = ""
+		return nil
+	}
+	adapter.configuredModel = *configured.Model
+
 	return nil
+}
+
+func (adapter *clineAdapter) ValidateModel(ctx context.Context, model string) harness.ModelValidation {
+	adapter.mutex.Lock()
+	configuredModel := adapter.configuredModel
+	adapter.mutex.Unlock()
+	if model != configuredModel {
+		return harness.UnverifiedModel("Cline can only run the model the project policy configures; probing another model would change Cline's global setting")
+	}
+	command, err := adapter.resolveClineCommand()
+	if err != nil {
+		return harness.UnverifiedModel("could not start a Cline model probe")
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return harness.UnverifiedModel("could not resolve the Cline model probe directory")
+	}
+	probe := runModelProbe(ctx, command, []string{
+		"--json",
+		"--plan",
+		"--auto-approve", "false",
+		"-c", cwd,
+		"-m", model,
+		"Say hi",
+	}, nil)
+	if clineUnknownModel(probe.output()) {
+		return harness.InvalidModel(rejectionEvidence(probe.output(), clineUnknownModel))
+	}
+	result := lastClineRunResult(probe.stdout)
+	if probe.err == nil && result != nil && jsonString(result.Text) != nil && *jsonString(result.Text) != "" {
+		return harness.ValidModel("model probe returned a reply")
+	}
+
+	return harness.UnverifiedModel(probeFailureEvidence(probe))
+}
+
+func clineUnknownModel(output string) bool {
+	lower := strings.ToLower(output)
+	return strings.Contains(lower, "model not found") ||
+		strings.Contains(lower, "invalid model format. expected format: modeltype/model")
 }
 
 func (adapter *clineAdapter) Detect(ctx context.Context) harness.Detection {

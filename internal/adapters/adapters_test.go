@@ -284,6 +284,69 @@ func TestClineBuildStartPassesConfiguredModel(t *testing.T) {
 	}
 }
 
+func TestModelRejectionsAreDefinitiveOnlyForKnownHarnessMessages(t *testing.T) {
+	tests := []struct {
+		name       string
+		recognizes func(string) bool
+		message    string
+		want       bool
+	}{
+		{name: "Claude provider rejection", recognizes: claudeUnknownModel, message: "There's an issue with the selected model (missing). It may not exist or you may not have access to it. [claude-code:unrecognized_model]", want: true},
+		{name: "Codex provider rejection", recognizes: codexUnknownModel, message: "HTTP 400 invalid_request_error: The 'missing' model is not supported", want: true},
+		{name: "Grok provider rejection", recognizes: grokUnknownModel, message: `Couldn't set model 'missing': Invalid params: "unknown model id"`, want: true},
+		{name: "Cline provider rejection", recognizes: clineUnknownModel, message: "model not found", want: true},
+		{name: "Cline malformed model", recognizes: clineUnknownModel, message: "invalid model format. Expected format: modelType/model", want: true},
+		{name: "rate limit is unverified", recognizes: claudeUnknownModel, message: "rate limit exceeded", want: false},
+		{name: "authentication is unverified", recognizes: codexUnknownModel, message: "not authenticated", want: false},
+		{name: "unknown error is unverified", recognizes: grokUnknownModel, message: "connection reset", want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := test.recognizes(test.message); got != test.want {
+				t.Fatalf("rejection recognition for %q = %t, want %t", test.message, got, test.want)
+			}
+		})
+	}
+}
+
+func TestGrokValidatesAnUnlistedModelWithAProbe(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("model probe fixture uses a POSIX shell script")
+	}
+	directory := t.TempDir()
+	observed := filepath.Join(directory, "probe-ran")
+	command := filepath.Join(directory, "grok")
+	script := "#!/bin/sh\n" +
+		"printf '%s' \"$*\" > \"" + observed + "\"\n" +
+		"printf '%s\\n' \"Couldn't set model 'new-model': Invalid params: \\\"unknown model id\\\"\" >&2\n" +
+		"exit 1\n"
+	if err := os.WriteFile(command, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	adapter := &grokAdapter{
+		command: command,
+		readModels: func(context.Context, string) ([]byte, error) {
+			return []byte("Available models:\n* grok-4.7\n"), nil
+		},
+	}
+	validation := adapter.ValidateModel(context.Background(), "new-model")
+	if validation.Status != harness.ModelInvalid {
+		t.Fatalf("ValidateModel(unlisted Grok model) = %#v, want invalid from probe", validation)
+	}
+	arguments, err := os.ReadFile(observed)
+	if err != nil {
+		t.Fatalf("Grok model probe did not run: %v", err)
+	}
+	if validation.Evidence != `Couldn't set model 'new-model': Invalid params: "unknown model id"` {
+		t.Fatalf("ValidateModel(unlisted Grok model) evidence = %q, want harness rejection", validation.Evidence)
+	}
+	for _, want := range []string{"--permission-mode plan", "--no-subagents", "--disable-web-search"} {
+		if !strings.Contains(string(arguments), want) {
+			t.Fatalf("Grok probe arguments = %q, want %q", arguments, want)
+		}
+	}
+}
+
 func TestClineConfigurationAcceptsAtMostOneModel(t *testing.T) {
 	first := "cline-pass/deepseek-v4-pro"
 	second := "moonshotai/kimi-k2.5"
@@ -293,33 +356,10 @@ func TestClineConfigurationAcceptsAtMostOneModel(t *testing.T) {
 		routes []harness.ConfiguredRoute
 		want   string
 	}{
-		{
-			name: "one model across routes",
-			routes: []harness.ConfiguredRoute{
-				{Location: `tier "engineer" route 0`, Model: &first},
-				{Location: `tier "intern" route 2`, Model: &first},
-			},
-		},
-		{
-			name: "no model",
-			routes: []harness.ConfiguredRoute{
-				{Location: `tier "engineer" route 0`},
-				{Location: `tier "intern" route 2`},
-			},
-		},
-		{
-			name: "conflicting models",
-			routes: []harness.ConfiguredRoute{
-				{Location: `tier "engineer" route 0`, Model: &first},
-				{Location: `tier "intern" route 2`, Model: &second},
-			},
-			want: `cline model "cline-pass/deepseek-v4-pro" at tier "engineer" route 0 conflicts with cline model "moonshotai/kimi-k2.5" at tier "intern" route 2; configure at most one cline model`,
-		},
-		{
-			name:   "bare model",
-			routes: []harness.ConfiguredRoute{{Location: `tier "engineer" route 0`, Model: &bare}},
-			want:   `cline model "deepseek-v4-pro" at tier "engineer" route 0 must use provider/model format`,
-		},
+		{name: "one model across routes", routes: []harness.ConfiguredRoute{{Location: `tier "engineer" route 0`, Model: &first}, {Location: `tier "intern" route 2`, Model: &first}}},
+		{name: "no model", routes: []harness.ConfiguredRoute{{Location: `tier "engineer" route 0`}, {Location: `tier "intern" route 2`}}},
+		{name: "conflicting models", routes: []harness.ConfiguredRoute{{Location: `tier "engineer" route 0`, Model: &first}, {Location: `tier "intern" route 2`, Model: &second}}, want: `cline model "cline-pass/deepseek-v4-pro" at tier "engineer" route 0 conflicts with cline model "moonshotai/kimi-k2.5" at tier "intern" route 2; configure at most one cline model`},
+		{name: "bare model", routes: []harness.ConfiguredRoute{{Location: `tier "engineer" route 0`, Model: &bare}}, want: `cline model "deepseek-v4-pro" at tier "engineer" route 0 must use provider/model format`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -331,6 +371,57 @@ func TestClineConfigurationAcceptsAtMostOneModel(t *testing.T) {
 				t.Fatalf("ValidateConfiguration() = %v, want %q", err, test.want)
 			}
 		})
+	}
+}
+
+func TestClineRefusesToProbeAModelOutsideTheProjectPolicy(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("probe fixture uses a POSIX shell script")
+	}
+	directory := t.TempDir()
+	observed := filepath.Join(directory, "cline-ran")
+	command := filepath.Join(directory, "cline")
+	if err := os.WriteFile(command, []byte("#!/bin/sh\nprintf probe > \""+observed+"\"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	adapter := &clineAdapter{command: command, configuredModel: "cline-pass/deepseek-v4-pro"}
+	validation := adapter.ValidateModel(context.Background(), "cline-pass/not-a-real-model-xyz")
+	if validation.Status != harness.ModelUnverified || !strings.Contains(validation.Evidence, "global setting") {
+		t.Fatalf("ValidateModel(outside policy) = %#v, want unverified global-setting protection", validation)
+	}
+	if _, err := os.Stat(observed); !os.IsNotExist(err) {
+		t.Fatalf("Cline probe ran for a model outside policy: %v", err)
+	}
+}
+
+func TestClineProbesTheConfiguredModelWithNoToolApproval(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("probe fixture uses a POSIX shell script")
+	}
+	directory := t.TempDir()
+	observed := filepath.Join(directory, "cline-arguments")
+	command := filepath.Join(directory, "cline")
+	script := "#!/bin/sh\n" +
+		"printf '%s' \"$*\" > \"" + observed + "\"\n" +
+		"printf '%s\\n' '{\"type\":\"run_result\",\"finishReason\":\"completed\",\"text\":\"hi\"}'\n"
+	if err := os.WriteFile(command, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	model := "cline-pass/deepseek-v4-pro"
+	adapter := &clineAdapter{command: command}
+	if err := adapter.ValidateConfiguration([]harness.ConfiguredRoute{{Location: `tier "engineer" route 0`, Model: &model}}); err != nil {
+		t.Fatalf("ValidateConfiguration() returned unexpected error: %v", err)
+	}
+	validation := adapter.ValidateModel(context.Background(), model)
+	if validation.Status != harness.ModelValid {
+		t.Fatalf("ValidateModel(configured model) = %#v, want valid", validation)
+	}
+	arguments, err := os.ReadFile(observed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(arguments), "--plan") || !strings.Contains(string(arguments), "--auto-approve false") {
+		t.Fatalf("Cline probe arguments = %q, want plan mode with auto-approval disabled", arguments)
 	}
 }
 
@@ -348,11 +439,7 @@ func TestClineConfigurationValidationRunsAtConfigurationLoad(t *testing.T) {
 			name:     "no model",
 			contents: `{"version":1,"tiers":{"engineer":{"routes":[{"harness":"cline"}]}}}`,
 		},
-		{
-			name:     "conflicting models",
-			contents: `{"version":1,"tiers":{"engineer":{"routes":[{"harness":"cline","model":"cline-pass/deepseek-v4-pro"}]},"intern":{"routes":[{"harness":"cline","model":"moonshotai/kimi-k2.5"}]}}}`,
-			want:     `cline model "cline-pass/deepseek-v4-pro" at tier "engineer" route 0 conflicts with cline model "moonshotai/kimi-k2.5" at tier "intern" route 0; configure at most one cline model`,
-		},
+		{name: "conflicting models", contents: `{"version":1,"tiers":{"engineer":{"routes":[{"harness":"cline","model":"cline-pass/deepseek-v4-pro"}]},"intern":{"routes":[{"harness":"cline","model":"moonshotai/kimi-k2.5"}]}}}`, want: `cline model "cline-pass/deepseek-v4-pro" at tier "engineer" route 0 conflicts with cline model "moonshotai/kimi-k2.5" at tier "intern" route 0; configure at most one cline model`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -725,7 +812,7 @@ func TestAdapterModelsAreModuleOwned(t *testing.T) {
 	}{
 		{name: "codex advisory catalog", adapter: NewCodex(), contains: []string{"gpt-5.6-terra", "gpt-5.3-codex-spark", "gpt-5.6-luna"}, authority: harness.ModelCatalogAdvisory},
 		{name: "claude advisory catalog", adapter: NewClaude(), contains: []string{"claude-sonnet-5", "claude-haiku-4-5-20251001"}, authority: harness.ModelCatalogAdvisory},
-		{name: "grok live listing catalog", adapter: grok, exact: []string{"grok-4.6", "grok-4.5"}, authority: harness.ModelCatalogAuthoritative},
+		{name: "grok live listing catalog", adapter: grok, exact: []string{"grok-4.6", "grok-4.5"}, authority: harness.ModelCatalogAdvisory},
 		{name: "cline no model catalog", adapter: NewCline(), exact: nil, authority: harness.ModelCatalogAdvisory},
 	}
 

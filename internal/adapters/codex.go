@@ -82,12 +82,13 @@ func (adapter *codexAdapter) ID() string {
 func (adapter *codexAdapter) ModelCatalog() harness.ModelCatalog {
 	return harness.ModelCatalog{
 		Models:    codexKnownModels(),
+		Latest:    "gpt-6-astra",
 		Authority: harness.ModelCatalogAdvisory,
 	}
 }
 
 func codexKnownModels() []string {
-	models := []string{"gpt-5.6-terra", "gpt-5.3-codex-spark", "gpt-5.6-luna"}
+	models := []string{"gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-5.6-terra", "gpt-5.3-codex-spark", "gpt-5.6-luna"}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return models
@@ -103,6 +104,41 @@ func codexKnownModels() []string {
 	}
 
 	return append(models, configured)
+}
+
+func (adapter *codexAdapter) ValidateModel(ctx context.Context, model string) harness.ModelValidation {
+	output, err := os.CreateTemp("", "landing-codex-model-probe-")
+	if err != nil {
+		return harness.UnverifiedModel("could not create a model probe output file")
+	}
+	outputPath := output.Name()
+	if err := output.Close(); err != nil {
+		return harness.UnverifiedModel("could not prepare a model probe output file")
+	}
+	defer os.Remove(outputPath)
+
+	probe := runModelProbe(ctx, "codex", []string{
+		"exec",
+		"--model", model,
+		"-s", string(codexSandboxReadOnly),
+		"--skip-git-repo-check",
+		"--output-last-message", outputPath,
+		"Say hi",
+	}, codexProbeEnvironment(adapter.SpawnPath()))
+	if codexUnknownModel(probe.output()) {
+		return harness.InvalidModel(rejectionEvidence(probe.output(), codexUnknownModel))
+	}
+	contents, readErr := os.ReadFile(outputPath)
+	if probe.err == nil && readErr == nil && strings.TrimSpace(string(contents)) != "" {
+		return harness.ValidModel("model probe returned a reply")
+	}
+
+	return harness.UnverifiedModel(probeFailureEvidence(probe))
+}
+
+func codexUnknownModel(output string) bool {
+	lower := strings.ToLower(output)
+	return strings.Contains(lower, "invalid_request_error") && strings.Contains(lower, "model") && strings.Contains(lower, "not supported")
 }
 
 func codexConfiguredModel(contents []byte) string {

@@ -13,6 +13,7 @@ import (
 	"github.com/on-mission/landing/internal/harness"
 	"github.com/on-mission/landing/internal/jobs"
 	"github.com/on-mission/landing/internal/journal"
+	"github.com/on-mission/landing/internal/modelvalidation"
 	"github.com/on-mission/landing/internal/paths"
 	"github.com/on-mission/landing/internal/persona"
 	"github.com/on-mission/landing/internal/router"
@@ -195,12 +196,9 @@ func (engine *Engine) dispatch(ctx context.Context, tier config.Tier, request Re
 	if err != nil {
 		return Response{}, err
 	}
-	if route.Provider == "" {
-		return Response{}, noProviderAvailable(tier)
-	}
-	adapter, err := engine.router.Adapter(route.Provider)
+	route, adapter, recovered, err := engine.validatedTierRoute(ctx, tier, route)
 	if err != nil {
-		return Response{}, fmt.Errorf("resolve routed provider %q: %w", route.Provider, err)
+		return Response{}, err
 	}
 	registration := threadRegistration{resumable: adapter.Capabilities().Continuation}
 	record, err := engine.jobs.Start(ctx, adapter, jobs.StartOptions{
@@ -214,6 +212,7 @@ func (engine *Engine) dispatch(ctx context.Context, tier config.Tier, request Re
 		Capacity:      route.Capacities[adapter.ID()],
 		RoutingScore:  route.Score,
 		Timeout:       timeoutPointer(request.AwaitTimeout),
+		RerouteCount:  recovered,
 		BeforeSpawn:   registration.beforeSpawn,
 	})
 	if err != nil {
@@ -222,6 +221,41 @@ func (engine *Engine) dispatch(ctx context.Context, tier config.Tier, request Re
 
 	registration.update(record)
 	return engine.awaitDispatch(ctx, tier, request, selectedPersona, record, registration.thread)
+}
+
+// validatedTierRoute treats an inconclusive or invalid model as unavailable
+// only when Landing selected the route. A named route has no replacement and
+// is rejected by dispatchCast instead.
+func (engine *Engine) validatedTierRoute(ctx context.Context, tier config.Tier, route router.ResolvedRoute) (router.ResolvedRoute, harness.Adapter, int, error) {
+	if route.Provider == "" {
+		return router.ResolvedRoute{}, nil, 0, noProviderAvailable(tier)
+	}
+	adapter, err := engine.router.Adapter(route.Provider)
+	if err != nil {
+		return router.ResolvedRoute{}, nil, 0, fmt.Errorf("resolve routed provider %q: %w", route.Provider, err)
+	}
+	validationFailure := validateRoute(ctx, adapter, route.Model)
+	if validationFailure == nil {
+		return route, adapter, 0, nil
+	}
+	expiresAt := engine.router.MarkProviderCold(adapter.ID(), route.Capacities[adapter.ID()], time.Now())
+	next, resolveErr := engine.router.Resolve(ctx, tier)
+	if resolveErr != nil {
+		return router.ResolvedRoute{}, nil, 0, resolveErr
+	}
+	if next.Provider == "" {
+		return router.ResolvedRoute{}, nil, 0, validationFailure
+	}
+	nextAdapter, adapterErr := engine.router.Adapter(next.Provider)
+	if adapterErr != nil {
+		return router.ResolvedRoute{}, nil, 0, fmt.Errorf("resolve replacement provider %q: %w", next.Provider, adapterErr)
+	}
+	if replacementErr := validateRoute(ctx, nextAdapter, next.Model); replacementErr != nil {
+		return router.ResolvedRoute{}, nil, 0, validationFailure
+	}
+	next.RoutedBecause = fmt.Sprintf("%s; %s failed model validation and was marked cold until %s; re-routed to %s: %s", route.RoutedBecause, adapter.ID(), expiresAt.UTC().Format("2006-01-02T15:04:05.000Z07:00"), nextAdapter.ID(), next.RoutedBecause)
+
+	return next, nextAdapter, 1, nil
 }
 
 // dispatchCast starts the caller-selected route without tier routing or recovery.
@@ -242,6 +276,9 @@ func (engine *Engine) dispatchCast(ctx context.Context, role string, request Req
 	adapter, err := engine.router.Adapter(request.Route.Harness)
 	if err != nil {
 		return Response{}, fmt.Errorf("resolve cast harness %q: %w", request.Route.Harness, err)
+	}
+	if err := validateRoute(ctx, adapter, request.Route.Model); err != nil {
+		return Response{}, err
 	}
 	model := request.Route.Model
 	reason := fmt.Sprintf("caller cast to %s", adapter.ID())
@@ -267,6 +304,22 @@ func (engine *Engine) dispatchCast(ctx context.Context, role string, request Req
 
 	registration.update(record)
 	return engine.awaitCast(ctx, role, request, record, registration.thread)
+}
+
+func validateRoute(ctx context.Context, adapter harness.Adapter, model *string) error {
+	if model == nil || *model == "" {
+		return nil
+	}
+	validation := modelvalidation.Validate(ctx, adapter, *model)
+	if validation.Status == harness.ModelValid {
+		return nil
+	}
+	code := harness.ErrorCodeModelUnverified
+	if validation.Status == harness.ModelInvalid {
+		code = harness.ErrorCodeModelInvalid
+	}
+
+	return harness.NewError(code, fmt.Sprintf("model %s/%s is %s: %s", adapter.ID(), *model, validation.Status, validation.Evidence), nil)
 }
 
 func (engine *Engine) awaitCast(ctx context.Context, role string, request Request, record *harness.JobRecord, thread *threadParticipant) (Response, error) {
@@ -336,6 +389,15 @@ func (engine *Engine) awaitDispatch(ctx context.Context, tier config.Tier, reque
 		nextAdapter, err := engine.router.Adapter(reroute.Provider)
 		if err != nil {
 			return Response{}, fmt.Errorf("resolve rerouted provider %q: %w", reroute.Provider, err)
+		}
+		if validationErr := validateRoute(waitContext, nextAdapter, reroute.Model); validationErr != nil {
+			expiresAt := engine.router.MarkProviderCold(nextAdapter.ID(), reroute.Capacities[nextAdapter.ID()], time.Now())
+			validationReason := fmt.Sprintf("%s; %s failed model validation and was marked cold until %s; no further re-route was attempted: %s", failedReason, nextAdapter.ID(), expiresAt.UTC().Format("2006-01-02T15:04:05.000Z07:00"), validationErr)
+			if updateErr := engine.jobs.UpdateRerouting(ctx, finished.JobID, validationReason, 1); updateErr != nil {
+				return Response{}, updateErr
+			}
+
+			return responseFor(*finished, tier.Name), nil
 		}
 		nextRegistration := threadRegistration{resumable: nextAdapter.Capabilities().Continuation}
 		next, err := engine.jobs.Start(waitContext, nextAdapter, jobs.StartOptions{

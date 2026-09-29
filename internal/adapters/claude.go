@@ -50,9 +50,35 @@ func (adapter *claudeAdapter) ID() string {
 
 func (adapter *claudeAdapter) ModelCatalog() harness.ModelCatalog {
 	return harness.ModelCatalog{
-		Models:    []string{"claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"},
+		Models:    []string{"claude-opus-5-5", "claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5-20251001"},
+		Aliases:   map[string]string{"opus-5.5": "claude-opus-5-5"},
+		Latest:    "claude-opus-5-5",
 		Authority: harness.ModelCatalogAdvisory,
 	}
+}
+
+func (adapter *claudeAdapter) ValidateModel(ctx context.Context, model string) harness.ModelValidation {
+	probe := runModelProbe(ctx, "claude", []string{
+		"-p", "Say hi",
+		"--output-format", "json",
+		"--model", model,
+		"--permission-mode", "plan",
+	}, nil)
+	if claudeUnknownModel(probe.output()) {
+		return harness.InvalidModel(rejectionEvidence(probe.output(), claudeUnknownModel))
+	}
+	result := parseClaudeResult(probe.stdout)
+	if probe.err == nil && result != nil && result.IsError != nil && !*result.IsError && result.Result != nil && *result.Result != "" {
+		return harness.ValidModel("model probe returned a reply")
+	}
+
+	return harness.UnverifiedModel(probeFailureEvidence(probe))
+}
+
+func claudeUnknownModel(output string) bool {
+	lower := strings.ToLower(output)
+	return strings.Contains(lower, "[claude-code:unrecognized_model]") ||
+		strings.Contains(lower, "there's an issue with the selected model")
 }
 
 func (adapter *claudeAdapter) Detect(ctx context.Context) harness.Detection {

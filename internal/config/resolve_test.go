@@ -31,6 +31,16 @@ func (harnesses staticHarnesses) ModelCatalog(id string) harness.ModelCatalog {
 	return harness.ModelCatalog{Models: append([]string(nil), harnesses[id]...), Authority: harness.ModelCatalogAuthoritative}
 }
 
+func (harnesses staticHarnesses) ValidateModel(_ context.Context, id string, model string) harness.ModelValidation {
+	for _, known := range harnesses[id] {
+		if known == model {
+			return harness.ValidModel("test probe returned a reply")
+		}
+	}
+
+	return harness.InvalidModel("test probe rejected the model")
+}
+
 type advisoryHarnesses struct {
 	staticHarnesses
 }
@@ -339,10 +349,9 @@ func TestLoadValidatesHarnessModels(t *testing.T) {
 			contents:  `{"version":1,"tiers":{"local":{"routes":[{"harness":"cline"}]}}}`,
 		},
 		{
-			name:      "rejects an unsupported model",
+			name:      "accepts an unlisted model from a direct configuration file",
 			harnesses: testHarnesses,
 			contents:  `{"version":1,"tiers":{"custom":{"routes":[{"harness":"grok","model":"grok-unknown"}]}}}`,
-			wantError: `configuration file %s is invalid: tier "custom" route 0 field "model" has unsupported value "grok-unknown" for harness "grok"; supported models are "grok-4.6", "grok-4.5"`,
 		},
 		{
 			name:      "accepts an unlisted model from an advisory catalog",

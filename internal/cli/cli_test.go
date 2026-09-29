@@ -9,9 +9,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/on-mission/landing/internal/config"
 	"github.com/on-mission/landing/internal/harness"
+	"github.com/on-mission/landing/internal/modelvalidation"
 	"github.com/on-mission/landing/internal/persona"
 )
 
@@ -167,6 +169,7 @@ func TestConfigInitReportsThatItCannotYetResolve(t *testing.T) {
 func TestRunManagementCommands(t *testing.T) {
 	directory := t.TempDir()
 	t.Setenv("LANDING_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	cacheValidModel(t, "codex", "gpt-5.6-terra")
 	code, err, stdout, _ := runCLI(t, directory, []string{"config", "init"})
 	if err != nil || code != exitOK {
 		t.Fatalf("Run(config init) = %d, %v; want %d, nil", code, err, exitOK)
@@ -214,6 +217,7 @@ func TestRunManagementCommands(t *testing.T) {
 func TestTierUpdateAppliesOnlySuppliedFields(t *testing.T) {
 	directory := t.TempDir()
 	t.Setenv("LANDING_STATE_DIR", filepath.Join(t.TempDir(), "state"))
+	cacheValidModel(t, "codex", "gpt-5.6-terra")
 	writeTestConfiguration(t, directory, `{"version":1,"defaultTier":"engineer","tiers":{"engineer":{"routes":[{"harness":"codex","model":"gpt-5.6-terra"}]}}}`)
 	load := func(t *testing.T) config.Config {
 		t.Helper()
@@ -279,21 +283,6 @@ func TestTierUpdateAppliesOnlySuppliedFields(t *testing.T) {
 	}
 }
 
-func TestTierAddRejectsModelsOutsideAnAuthoritativeCatalog(t *testing.T) {
-	directory := t.TempDir()
-	t.Setenv("LANDING_STATE_DIR", filepath.Join(t.TempDir(), "state"))
-	if code, err, _, _ := runCLI(t, directory, []string{"config", "init"}); err != nil || code != exitOK {
-		t.Fatalf("Run(config init) = %d, %v; want %d, nil", code, err, exitOK)
-	}
-	code, err, _, _ := runCLI(t, directory, []string{"tier", "add", "--name", "bad", "--route", "grok/grok-unknown"})
-	if code != exitUsage {
-		t.Fatalf("Run(tier add unknown authoritative model) code = %d, want %d", code, exitUsage)
-	}
-	if err == nil || !strings.Contains(err.Error(), "supported models are") || !strings.Contains(err.Error(), "grok-4.6") {
-		t.Fatalf("Run(tier add unknown authoritative model) error = %v, want supported Grok models", err)
-	}
-}
-
 func TestHarnessReportDistinguishesDetectionStates(t *testing.T) {
 	reports := []harnessReport{
 		{Name: "absent", Status: harness.DetectionAbsent, Capacity: capacityReport{}},
@@ -316,6 +305,14 @@ func TestHarnessReportDistinguishesDetectionStates(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "unmetered: ready\n  capacity: no gauge") {
 		t.Fatalf("writeHarnessReports() output = %q, want ready harness with no gauge", output.String())
+	}
+}
+
+func cacheValidModel(t *testing.T, harnessID string, model string) {
+	t.Helper()
+	cache := modelvalidation.NewCache(os.Getenv("LANDING_STATE_DIR"), time.Now)
+	if err := cache.Put(context.Background(), harnessID, model, harness.ValidModel("test validation")); err != nil {
+		t.Fatalf("Cache.Put(%s/%s) returned unexpected error: %v", harnessID, model, err)
 	}
 }
 

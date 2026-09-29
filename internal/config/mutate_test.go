@@ -242,7 +242,7 @@ func TestEachMutationRejectsUnsupportedModelsWithoutWriting(t *testing.T) {
 			mutate: func(ctx context.Context, path string) error {
 				return AddTier(ctx, path, testHarnesses, Tier{Name: "writer", Routes: []Route{{Harness: "grok", Model: testStringPointer("grok-unknown")}}})
 			},
-			wantError: `configuration file %s is invalid: tier "writer" route 0 field "model" has unsupported value "grok-unknown" for harness "grok"; supported models are "grok-4.6", "grok-4.5"`,
+			wantError: `configuration file %s has models that could not be validated: model grok/grok-unknown is invalid: test probe rejected the model`,
 		},
 		{
 			name:     "update tier",
@@ -252,7 +252,7 @@ func TestEachMutationRejectsUnsupportedModelsWithoutWriting(t *testing.T) {
 
 				return err
 			},
-			wantError: `configuration file %s is invalid: tier "reviewer" route 0 field "model" has unsupported value "grok-unknown" for harness "grok"; supported models are "grok-4.6", "grok-4.5"`,
+			wantError: `configuration file %s has models that could not be validated: model grok/grok-unknown is invalid: test probe rejected the model`,
 		},
 		{
 			name:     "remove tier",
@@ -260,7 +260,7 @@ func TestEachMutationRejectsUnsupportedModelsWithoutWriting(t *testing.T) {
 			mutate: func(ctx context.Context, path string) error {
 				return RemoveTier(ctx, path, testHarnesses, "editor")
 			},
-			wantError: `configuration file %s is invalid: tier "reviewer" route 0 field "model" has unsupported value "grok-unknown" for harness "grok"; supported models are "grok-4.6", "grok-4.5"`,
+			wantError: `configuration file %s has models that could not be validated: model grok/grok-unknown is invalid: test probe rejected the model`,
 		},
 		{
 			name:     "set default tier",
@@ -268,7 +268,7 @@ func TestEachMutationRejectsUnsupportedModelsWithoutWriting(t *testing.T) {
 			mutate: func(ctx context.Context, path string) error {
 				return SetDefaultTier(ctx, path, testHarnesses, "reviewer")
 			},
-			wantError: `configuration file %s is invalid: tier "reviewer" route 0 field "model" has unsupported value "grok-unknown" for harness "grok"; supported models are "grok-4.6", "grok-4.5"`,
+			wantError: `configuration file %s has models that could not be validated: model grok/grok-unknown is invalid: test probe rejected the model`,
 		},
 	}
 

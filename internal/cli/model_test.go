@@ -70,7 +70,6 @@ func TestRunDispatchRejectsUnusableOrUnreachablePins(t *testing.T) {
 	}{
 		{name: "harness absent", status: harness.DetectionAbsent, models: []string{"careful"}, route: routeOption{Harness: "recording", Model: stringPointer("careful")}, wantMsg: `observed state "absent"`},
 		{name: "harness unauthenticated", status: harness.DetectionUnauthenticated, models: []string{"careful"}, route: routeOption{Harness: "recording", Model: stringPointer("careful")}, wantMsg: `observed state "unauthenticated"`},
-		{name: "model unreachable", status: harness.DetectionReady, models: []string{"careful"}, route: routeOption{Harness: "recording", Model: stringPointer("absent")}, wantMsg: `cannot reach; reachable models are "careful"`},
 		{name: "harness unsupported", status: harness.DetectionReady, models: []string{"careful"}, route: routeOption{Harness: "elsewhere", Model: stringPointer("careful")}, wantMsg: `unsupported harness "elsewhere"`},
 	}
 	for _, test := range tests {
@@ -115,11 +114,10 @@ func TestParseModelRouteAcceptsAHarnessWithAnOptionalModel(t *testing.T) {
 	}
 }
 
-func TestParseModelRouteDirectsQualifiedClineModelsToConfiguration(t *testing.T) {
-	_, err := parseModelRoute("cline/cline-pass/deepseek-v4-pro")
-	var usage *usageError
-	if !errors.As(err, &usage) || !strings.Contains(usage.message, "configure the Cline model in the project policy") {
-		t.Fatalf("parseModelRoute() error = %v, want a configuration direction", err)
+func TestParseModelRouteAcceptsQualifiedClineModels(t *testing.T) {
+	route, err := parseModelRoute("cline/cline-pass/deepseek-v4-pro")
+	if err != nil || route.Model == nil || *route.Model != "cline-pass/deepseek-v4-pro" {
+		t.Fatalf("parseModelRoute() = %#v, %v; want qualified Cline model", route, err)
 	}
 }
 
@@ -318,6 +316,10 @@ func (adapter *pinnedRouteAdapter) ModelCatalog() harness.ModelCatalog {
 	}
 
 	return harness.ModelCatalog{Models: adapter.models, Authority: authority}
+}
+
+func (adapter *pinnedRouteAdapter) ValidateModel(context.Context, string) harness.ModelValidation {
+	return harness.ValidModel("test validation")
 }
 
 func (adapter *pinnedRouteAdapter) Detect(context.Context) harness.Detection {
