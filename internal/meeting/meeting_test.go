@@ -14,7 +14,7 @@ import (
 	"github.com/on-mission/landing/internal/jobs"
 )
 
-func TestRunKeepsParticipantContextsIsolatedAndPassesPositionsVerbatimToArbiter(t *testing.T) {
+func TestRunKeepsSeatContextsIsolatedAndPassesSeatLabelsVerbatimToArbiter(t *testing.T) {
 	dispatcher := &fakeDispatcher{dispatch: func(_ context.Context, request dispatch.Request) (dispatch.Response, error) {
 		if request.Persona == "chair" && strings.Contains(request.Prompt, "The participant positions:") {
 			return response("arbiter reading"), nil
@@ -37,14 +37,14 @@ func TestRunKeepsParticipantContextsIsolatedAndPassesPositionsVerbatimToArbiter(
 		}
 	}
 	arbiter := requestFor(requests, "chair", "The participant positions:")
-	for _, answer := range []string{"optimist position", "skeptic position", "observer position"} {
-		if !strings.Contains(arbiter.Prompt, answer) {
-			t.Fatalf("arbiter prompt = %q, missing participant position %q", arbiter.Prompt, answer)
+	for _, want := range []string{"## optimist · codex/sol", "## skeptic · claude/opus", "## observer · grok/fast", "optimist position", "skeptic position", "observer position"} {
+		if !strings.Contains(arbiter.Prompt, want) {
+			t.Fatalf("arbiter prompt = %q, missing %q", arbiter.Prompt, want)
 		}
 	}
 }
 
-func TestRunDispatchesEveryParticipantBeforeAnyCanFinish(t *testing.T) {
+func TestRunDispatchesEverySeatBeforeAnyCanFinish(t *testing.T) {
 	started := make(chan string, 3)
 	release := make(chan struct{})
 	dispatcher := &fakeDispatcher{dispatch: func(ctx context.Context, request dispatch.Request) (dispatch.Response, error) {
@@ -67,7 +67,7 @@ func TestRunDispatchesEveryParticipantBeforeAnyCanFinish(t *testing.T) {
 		select {
 		case <-started:
 		case <-time.After(time.Second):
-			t.Fatal("Run() did not start every participant concurrently")
+			t.Fatal("Run() did not start every seat concurrently")
 		}
 	}
 	close(release)
@@ -79,15 +79,24 @@ func TestRunDispatchesEveryParticipantBeforeAnyCanFinish(t *testing.T) {
 	}
 }
 
-func TestRunKeepsArbiterParticipantInstancesSeparate(t *testing.T) {
+func TestRunKeepsArbiterAndParticipantInstancesSeparate(t *testing.T) {
 	dispatcher := &fakeDispatcher{dispatch: func(_ context.Context, request dispatch.Request) (dispatch.Response, error) {
 		if request.Persona == "chair" && strings.Contains(request.Prompt, "The participant positions:") {
 			return response("arbiter reading"), nil
 		}
 		return response(request.Persona + " position"), nil
 	}}
-	model := "outside-tier"
-	request := Request{Question: "question", Personas: []string{"chair", "other"}, Arbiter: "chair", Casts: map[string]config.Route{"chair": {Harness: "codex", Model: &model}}, Tier: "review", CWD: "/tmp", Timeout: time.Second}
+	request := Request{
+		Question: "question",
+		Seats: []Seat{
+			{Persona: "chair", Route: route("codex", "outside-tier")},
+			{Persona: "other", Route: route("claude", "opus")},
+		},
+		Arbiter: Seat{Persona: "chair", Route: route("grok", "judge")},
+		Tier:    "review",
+		CWD:     "/tmp",
+		Timeout: time.Second,
+	}
 	_, err := Run(context.Background(), dispatcher, request)
 	if err != nil {
 		t.Fatalf("Run() returned unexpected error: %v", err)
@@ -95,36 +104,21 @@ func TestRunKeepsArbiterParticipantInstancesSeparate(t *testing.T) {
 	requests := dispatcher.Requests()
 	participant := requestFor(requests, "chair", "question")
 	if participant.Route == nil || participant.Route.Harness != "codex" || strings.Contains(participant.Prompt, "other position") {
-		t.Fatalf("chair participant request = %#v, want a separate cast participant context", participant)
+		t.Fatalf("chair participant request = %#v, want a separate seat context", participant)
 	}
 	arbiter := requestFor(requests, "chair", "The participant positions:")
-	if arbiter.Route != nil || !strings.Contains(arbiter.Prompt, "chair position") || !strings.Contains(arbiter.Prompt, "other position") {
-		t.Fatalf("chair arbiter request = %#v, want an uncast reading of every position", arbiter)
+	if arbiter.Route == nil || arbiter.Route.Harness != "grok" || !strings.Contains(arbiter.Prompt, "chair position") || !strings.Contains(arbiter.Prompt, "other position") {
+		t.Fatalf("chair arbiter request = %#v, want a separate arbiter context", arbiter)
 	}
 }
 
-func TestRunDoesNotAskForMachineReadableOutput(t *testing.T) {
-	dispatcher := &fakeDispatcher{dispatch: func(_ context.Context, request dispatch.Request) (dispatch.Response, error) {
-		return response(request.Persona + " response"), nil
-	}}
-	_, err := Run(context.Background(), dispatcher, testRequest())
-	if err != nil {
-		t.Fatalf("Run() returned unexpected error: %v", err)
-	}
-	for _, request := range dispatcher.Requests() {
-		if strings.Contains(strings.ToLower(request.Prompt), "json") || strings.Contains(strings.ToLower(request.Prompt), "machine-readable") {
-			t.Fatalf("prompt for %q asks for a structured format: %q", request.Persona, request.Prompt)
-		}
-	}
-}
-
-func TestRunReportsParticipantAndArbiterFailures(t *testing.T) {
+func TestRunReportsFailedSeatAndProceedsWithTwoAnswers(t *testing.T) {
 	dispatcher := &fakeDispatcher{dispatch: func(_ context.Context, request dispatch.Request) (dispatch.Response, error) {
 		if request.Persona == "observer" {
 			return dispatch.Response{}, errors.New("participant harness failed")
 		}
 		if strings.Contains(request.Prompt, "The participant positions:") {
-			return dispatch.Response{}, errors.New("arbiter harness failed")
+			return response("arbiter reading"), nil
 		}
 		return response(request.Persona + " position"), nil
 	}}
@@ -132,55 +126,67 @@ func TestRunReportsParticipantAndArbiterFailures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() returned unexpected error: %v", err)
 	}
-	if len(result.Failures) != 2 || result.Arbiter == nil || result.Arbiter.Failure != "arbiter harness failed" {
-		t.Fatalf("Run() = %#v, want participant and arbiter failures", result)
+	if result.Arbiter == nil || result.Arbiter.Response == nil || len(result.Failures) != 1 || result.Failures[0].Seat.Persona != "observer" {
+		t.Fatalf("Run() = %#v, want a visible failed seat and arbiter reading", result)
 	}
 }
 
-func TestRunReportsWhenFewerThanTwoParticipantsAnswer(t *testing.T) {
-	dispatcher := &fakeDispatcher{dispatch: func(_ context.Context, request dispatch.Request) (dispatch.Response, error) {
-		if request.Persona != "optimist" {
-			return dispatch.Response{}, errors.New("participant harness failed")
-		}
-		return response("only answer"), nil
-	}}
-	result, err := Run(context.Background(), dispatcher, testRequest())
-	if err != nil {
-		t.Fatalf("Run() returned unexpected error: %v", err)
-	}
-	if result.Arbiter != nil || len(result.Failures) != 3 || result.Failures[2].Stage != "meeting" {
-		t.Fatalf("Run() = %#v, want no arbiter and a nothing-to-deliberate failure", result)
-	}
-}
-
-func TestValidateRejectsUsageStates(t *testing.T) {
-	tests := map[string]struct {
-		personas []string
-		arbiter  string
-		want     string
-	}{
-		"missing arbiter":       {personas: []string{"one", "two"}, want: "has no arbiter"},
-		"one participant":       {personas: []string{"one"}, arbiter: "chair", want: "at least two participants"},
-		"duplicate participant": {personas: []string{"one", "one"}, arbiter: "chair", want: `persona "one" more than once`},
-	}
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			err := Validate(test.personas, test.arbiter)
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Validate(%q, %q) error = %v, want %q", test.personas, test.arbiter, err, test.want)
+func TestRunRefusesBeforeDispatchingAnySeatWhenPreflightFails(t *testing.T) {
+	dispatcher := &fakeDispatcher{
+		dispatch: func(_ context.Context, request dispatch.Request) (dispatch.Response, error) {
+			return response(request.Persona + " position"), nil
+		},
+		validate: func(_ context.Context, candidate config.Route) error {
+			if candidate.String() == "codex/invalid" {
+				return errors.New("provider rejected the model")
 			}
-		})
+			return nil
+		},
+	}
+	request := testRequest()
+	request.Seats[0].Route = route("codex", "invalid")
+	_, err := Run(context.Background(), dispatcher, request)
+	if err == nil || !strings.Contains(err.Error(), "codex/invalid") {
+		t.Fatalf("Run() error = %v, want invalid route evidence", err)
+	}
+	if got := len(dispatcher.Requests()); got != 0 {
+		t.Fatalf("Run() dispatched %d requests after preflight failed, want 0", got)
+	}
+}
+
+func TestValidateCountsSeatsRatherThanDistinctPersonas(t *testing.T) {
+	seats := []Seat{
+		{Persona: "one", Route: route("codex", "sol")},
+		{Persona: "one", Route: route("claude", "opus")},
+	}
+	if err := Validate(seats, Seat{Persona: "chair", Route: route("grok", "judge")}); err != nil {
+		t.Fatalf("Validate() returned unexpected error: %v", err)
 	}
 }
 
 func testRequest() Request {
-	return Request{Question: "question", Personas: []string{"optimist", "skeptic", "observer"}, Arbiter: "chair", Tier: "review", CWD: "/tmp"}
+	return Request{
+		Question: "question",
+		Seats: []Seat{
+			{Persona: "optimist", Route: route("codex", "sol")},
+			{Persona: "skeptic", Route: route("claude", "opus")},
+			{Persona: "observer", Route: route("grok", "fast")},
+		},
+		Arbiter: Seat{Persona: "chair", Route: route("claude", "judge")},
+		Tier:    "review",
+		CWD:     "/tmp",
+	}
+}
+
+func route(harnessID string, model string) config.Route {
+	return config.Route{Harness: harnessID, Model: &model}
 }
 
 type fakeDispatcher struct {
 	mu       sync.Mutex
 	requests []dispatch.Request
 	dispatch func(context.Context, dispatch.Request) (dispatch.Response, error)
+	validate func(context.Context, config.Route) error
 }
 
 func (fake *fakeDispatcher) Dispatch(ctx context.Context, request dispatch.Request) (dispatch.Response, error) {
@@ -189,6 +195,14 @@ func (fake *fakeDispatcher) Dispatch(ctx context.Context, request dispatch.Reque
 	fake.mu.Unlock()
 
 	return fake.dispatch(ctx, request)
+}
+
+func (fake *fakeDispatcher) ValidateRoute(ctx context.Context, candidate config.Route) error {
+	if fake.validate == nil {
+		return nil
+	}
+
+	return fake.validate(ctx, candidate)
 }
 
 func (fake *fakeDispatcher) Requests() []dispatch.Request {

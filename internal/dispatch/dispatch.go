@@ -89,6 +89,35 @@ func (engine *Engine) Dispatch(ctx context.Context, request Request) (Response, 
 	return engine.dispatch(ctx, tier, request)
 }
 
+// ValidateRoute checks the exact route a meeting will dispatch before the
+// meeting starts any participant work.
+func (engine *Engine) ValidateRoute(ctx context.Context, route config.Route) error {
+	adapter, err := engine.router.Adapter(route.Harness)
+	if err != nil {
+		return fmt.Errorf("resolve meeting harness %q: %w", route.Harness, err)
+	}
+
+	return validateRoute(ctx, adapter, route.Model)
+}
+
+// MeetingRoute chooses a tier route once so a meeting can validate the exact
+// concrete route before it dispatches its seat.
+func (engine *Engine) MeetingRoute(ctx context.Context, tierName string) (config.Route, error) {
+	tier, err := engine.tier(tierName)
+	if err != nil {
+		return config.Route{}, err
+	}
+	route, err := engine.router.Resolve(ctx, tier)
+	if err != nil {
+		return config.Route{}, err
+	}
+	if route.Provider == "" {
+		return config.Route{}, noProviderAvailable(tier)
+	}
+
+	return config.Route{Harness: route.Provider, Model: route.Model}, nil
+}
+
 // pinnedRole names the work a pinned dispatch is recorded under. A meeting
 // cast runs inside a tier and keeps that tier's name. A caller who named a
 // route instead of a tier has no tier to record, so the route itself becomes

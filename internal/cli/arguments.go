@@ -267,16 +267,12 @@ func unexpectedOptions(values options, command string, allowed ...string) error 
 }
 
 func parseCast(value string) (castOption, error) {
-	persona, routeValue, ok := strings.Cut(value, "=")
-	if !ok || persona == "" || routeValue == "" {
-		return castOption{}, &usageError{message: fmt.Sprintf("--cast has invalid value %q; expected persona=harness/model", value)}
-	}
-	route, err := parseRoute(routeValue)
-	if err != nil {
-		return castOption{}, err
+	persona, target, ok := strings.Cut(value, "=")
+	if !ok || persona == "" || target == "" {
+		return castOption{}, &usageError{message: fmt.Sprintf("--cast has invalid value %q; expected persona=target", value)}
 	}
 
-	return castOption{Persona: persona, Route: route}, nil
+	return castOption{Persona: persona, Route: routeOption{Target: target}}, nil
 }
 
 func parseRoute(value string) (routeOption, error) {

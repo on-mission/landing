@@ -222,6 +222,25 @@ func TestListModelsReportsRoutesWithoutAResolvableConfiguration(t *testing.T) {
 	}
 }
 
+func TestListModelsShowsEffectiveLatestOnceAndResolvesLatestTierRoutes(t *testing.T) {
+	directory := t.TempDir()
+	writeTestConfiguration(t, directory, `{"version":1,"defaultTier":"review","tiers":{"review":{"routes":[{"harness":"recording","model":"latest"}]}}}`)
+	registry := router.NewMapRegistry(map[string]harness.Adapter{
+		"recording": &pinnedRouteAdapter{status: harness.DetectionReady, models: []string{"sol", "terra"}, latest: "sol"},
+	})
+	stdout := &bytes.Buffer{}
+	if code, err := listModels(context.Background(), directory, registry, false, stdout); code != exitOK || err != nil {
+		t.Fatalf("listModels() = %d, %v, want %d, nil", code, err, exitOK)
+	}
+	output := stdout.String()
+	if strings.Count(output, "recording latest: sol (landing default)") != 1 {
+		t.Fatalf("listModels() output = %q, want one effective latest line", output)
+	}
+	if strings.Contains(output, "recording/latest") || !strings.Contains(output, "recording/sol") || !strings.Contains(output, "tiers: review") {
+		t.Fatalf("listModels() output = %q, want concrete latest route with tier membership and no latest pseudo-route", output)
+	}
+}
+
 // This catches catalog output implying that a fixed model list is exhaustive
 // when the harness can accept models Landing cannot enumerate.
 func TestCatalogOutputMarksAdvisoryModelsAsIncomplete(t *testing.T) {
@@ -292,6 +311,7 @@ func dispatchWithPin(t *testing.T, directory string, adapter harness.Adapter, pi
 type pinnedRouteAdapter struct {
 	status    harness.DetectionStatus
 	models    []string
+	latest    string
 	authority harness.ModelCatalogAuthority
 	capacity  harness.Capacity
 	params    harness.StartParams
@@ -315,7 +335,7 @@ func (adapter *pinnedRouteAdapter) ModelCatalog() harness.ModelCatalog {
 		authority = harness.ModelCatalogAuthoritative
 	}
 
-	return harness.ModelCatalog{Models: adapter.models, Authority: authority}
+	return harness.ModelCatalog{Models: adapter.models, Latest: adapter.latest, Authority: authority}
 }
 
 func (adapter *pinnedRouteAdapter) ValidateModel(context.Context, string) harness.ModelValidation {

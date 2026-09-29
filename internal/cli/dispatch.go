@@ -95,18 +95,14 @@ func runMeeting(ctx context.Context, inputs Inputs, values options, positionals 
 	if err := unexpectedOptions(values, "meeting", "tier", "persona", "arbiter", "cast", "cwd", "label", "timeout", "prompt-file", "json"); err != nil {
 		return exitUsage, err
 	}
-	if err := meeting.Validate(values.Personas, values.Arbiter.Value); err != nil {
-		return exitUsage, &usageError{message: err.Error()}
+	if _, _, _, err := parseMeetingArbiter(values.Arbiter.Value); err != nil {
+		return exitUsage, err
 	}
 	prompt, err := resolvePrompt(values.PromptFile, positionals, inputs.Stdin, inputs.StdinIsTerminal)
 	if err != nil {
 		return exitUsage, err
 	}
 	configuration, err := loadConfiguration(ctx, invocationDir, registry)
-	if err != nil {
-		return exitUsage, err
-	}
-	casts, err := meetingCasts(ctx, values.Casts, values.Personas, registry)
 	if err != nil {
 		return exitUsage, err
 	}
@@ -117,6 +113,17 @@ func runMeeting(ctx context.Context, inputs Inputs, values options, positionals 
 	if err != nil {
 		return exitUsage, err
 	}
+	executionTier, _, err := modeltarget.New(*configuration, registry).ResolveTier(configuration.Tiers[tier])
+	if err != nil {
+		return exitUsage, err
+	}
+	executionConfiguration := *configuration
+	executionConfiguration.Tiers = make(map[string]config.Tier, len(configuration.Tiers))
+	for name, configuredTier := range configuration.Tiers {
+		executionConfiguration.Tiers[name] = configuredTier
+	}
+	executionConfiguration.Tiers[tier] = executionTier
+	configuration = &executionConfiguration
 	timeout, err := resolveTimeout(values.Timeout)
 	if err != nil {
 		return exitUsage, err
@@ -129,13 +136,16 @@ func runMeeting(ctx context.Context, inputs Inputs, values options, positionals 
 	store := jobs.NewStore(ctx)
 	defer store.Shutdown(context.Background())
 	engine := dispatch.New(router.New(registry), store, *configuration)
+	seats, arbiter, err := meetingSeats(ctx, values, *configuration, registry, tier, engine.MeetingRoute)
+	if err != nil {
+		return exitUsage, err
+	}
 	stopProgress := startProgress("meeting", inputs.Stderr)
 	defer stopProgress()
 	result, err := meeting.Run(ctx, engine, meeting.Request{
 		Question: prompt,
-		Personas: values.Personas,
-		Arbiter:  values.Arbiter.Value,
-		Casts:    casts,
+		Seats:    seats,
+		Arbiter:  arbiter,
 		Tier:     tier,
 		CWD:      cwd,
 		Label:    optionPointer(values.Label),
@@ -148,27 +158,115 @@ func runMeeting(ctx context.Context, inputs Inputs, values options, positionals 
 	return reportMeeting(result, values.JSON, inputs.Stdout)
 }
 
-func meetingCasts(ctx context.Context, casts []castOption, personas []string, registry router.Registry) (map[string]config.Route, error) {
-	participants := make(map[string]struct{}, len(personas))
-	for _, persona := range personas {
-		participants[persona] = struct{}{}
-	}
-	resolved := make(map[string]config.Route, len(casts))
-	for _, cast := range casts {
-		if _, ok := participants[cast.Persona]; !ok {
-			return nil, &usageError{message: fmt.Sprintf("--cast names %q, which is not a meeting participant", cast.Persona)}
-		}
-		if _, ok := resolved[cast.Persona]; ok {
-			return nil, &usageError{message: fmt.Sprintf("--cast names participant %q more than once", cast.Persona)}
-		}
-		route, err := pinnedRoute(ctx, cast.Route, registry, fmt.Sprintf("--cast for %q", cast.Persona))
+type meetingRouteResolver func(context.Context, string) (config.Route, error)
+
+func meetingSeats(ctx context.Context, values options, configuration config.Config, registry router.Registry, tier string, routeForTier meetingRouteResolver) ([]meeting.Seat, meeting.Seat, error) {
+	resolver := modeltarget.New(configuration, registry)
+	castResolutions := make(map[string][]modeltarget.Resolution, len(values.Casts))
+	castPersonas := make([]string, 0, len(values.Casts))
+	for _, cast := range values.Casts {
+		resolutions, err := resolver.Resolve(cast.Route.Target)
 		if err != nil {
-			return nil, err
+			return nil, meeting.Seat{}, &usageError{message: fmt.Sprintf("--cast for %q: %v", cast.Persona, err)}
 		}
-		resolved[cast.Persona] = route
+		if _, exists := castResolutions[cast.Persona]; !exists {
+			castPersonas = append(castPersonas, cast.Persona)
+		}
+		castResolutions[cast.Persona] = append(castResolutions[cast.Persona], resolutions...)
+	}
+	participants := uniquePersonas(values.Personas, castPersonas)
+	seats := make([]meeting.Seat, 0, len(participants))
+	for _, persona := range participants {
+		resolutions := deduplicateMeetingResolutions(castResolutions[persona])
+		if len(resolutions) == 0 {
+			route, err := routeForTier(ctx, tier)
+			if err != nil {
+				return nil, meeting.Seat{}, err
+			}
+			seats = append(seats, meeting.Seat{Persona: persona, Route: route})
+			continue
+		}
+		for _, resolution := range resolutions {
+			seats = append(seats, meeting.Seat{Persona: persona, Route: resolution.Route, Target: resolution.Written, LatestSource: string(resolution.LatestSource)})
+		}
+	}
+	arbiter, err := meetingArbiter(ctx, values.Arbiter.Value, resolver, routeForTier, tier)
+	if err != nil {
+		return nil, meeting.Seat{}, err
 	}
 
-	return resolved, nil
+	return seats, arbiter, nil
+}
+
+func meetingArbiter(ctx context.Context, value string, resolver modeltarget.Resolver, routeForTier meetingRouteResolver, tier string) (meeting.Seat, error) {
+	persona, target, pinned, err := parseMeetingArbiter(value)
+	if err != nil {
+		return meeting.Seat{}, err
+	}
+	if !pinned {
+		route, err := routeForTier(ctx, tier)
+		if err != nil {
+			return meeting.Seat{}, err
+		}
+		return meeting.Seat{Persona: persona, Route: route}, nil
+	}
+	resolutions, err := resolver.Resolve(target)
+	if err != nil {
+		return meeting.Seat{}, &usageError{message: fmt.Sprintf("--arbiter for %q: %v", persona, err)}
+	}
+	if len(resolutions) != 1 {
+		routes := make([]string, 0, len(resolutions))
+		for _, resolution := range resolutions {
+			routes = append(routes, resolution.Route.String())
+		}
+		return meeting.Seat{}, &usageError{message: fmt.Sprintf("--arbiter target %q resolves to several routes: %s", target, strings.Join(routes, ", "))}
+	}
+
+	resolution := resolutions[0]
+	return meeting.Seat{Persona: persona, Route: resolution.Route, Target: resolution.Written, LatestSource: string(resolution.LatestSource)}, nil
+}
+
+func parseMeetingArbiter(value string) (string, string, bool, error) {
+	persona, target, pinned := strings.Cut(value, "=")
+	if persona == "" {
+		return "", "", false, &usageError{message: "meeting has no arbiter"}
+	}
+	if pinned && target == "" {
+		return "", "", false, &usageError{message: fmt.Sprintf("--arbiter has invalid value %q; expected persona or persona=target", value)}
+	}
+
+	return persona, target, pinned, nil
+}
+
+func uniquePersonas(groups ...[]string) []string {
+	seen := make(map[string]struct{})
+	personas := make([]string, 0)
+	for _, group := range groups {
+		for _, persona := range group {
+			if _, exists := seen[persona]; exists {
+				continue
+			}
+			seen[persona] = struct{}{}
+			personas = append(personas, persona)
+		}
+	}
+
+	return personas
+}
+
+func deduplicateMeetingResolutions(resolutions []modeltarget.Resolution) []modeltarget.Resolution {
+	seen := make(map[string]struct{}, len(resolutions))
+	unique := make([]modeltarget.Resolution, 0, len(resolutions))
+	for _, resolution := range resolutions {
+		key := resolution.Route.String()
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		unique = append(unique, resolution)
+	}
+
+	return unique
 }
 
 // pinnedRoute validates a route the caller named outright, for a dispatch's

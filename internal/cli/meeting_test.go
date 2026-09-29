@@ -12,117 +12,108 @@ import (
 	"github.com/on-mission/landing/internal/harness"
 	"github.com/on-mission/landing/internal/jobs"
 	"github.com/on-mission/landing/internal/meeting"
+	"github.com/on-mission/landing/internal/modeltarget"
 	"github.com/on-mission/landing/internal/router"
 )
 
-func TestRunMeetingUsageErrorsHaveUsageExitCode(t *testing.T) {
-	directory := t.TempDir()
-	tests := map[string]struct {
-		args []string
-		want string
-	}{
-		"missing arbiter":       {args: []string{"meeting", "--persona", "optimist", "--persona", "skeptic", "question"}, want: "has no arbiter"},
-		"one participant":       {args: []string{"meeting", "--persona", "optimist", "--arbiter", "chair", "question"}, want: "at least two participants"},
-		"duplicate participant": {args: []string{"meeting", "--persona", "optimist", "--persona", "optimist", "--arbiter", "chair", "question"}, want: `persona "optimist" more than once`},
+func TestMeetingSeatsAllowsSeveralSeatsForOnePersonaAndDeduplicatesRoutes(t *testing.T) {
+	configuration := config.Config{Tiers: map[string]config.Tier{"review": {Name: "review"}}}
+	registry := router.NewMapRegistry(map[string]harness.Adapter{
+		"codex":  castAdapter{models: []string{"sol"}},
+		"claude": castAdapter{models: []string{"opus"}},
+		"grok":   castAdapter{models: []string{"judge"}},
+	})
+	values := options{
+		Personas: []string{"other"},
+		Arbiter:  parsedOption{Value: "chair=grok/judge", Set: true},
+		Casts: []castOption{
+			{Persona: "one", Route: routeOption{Target: "codex/sol,claude/opus"}},
+			{Persona: "one", Route: routeOption{Target: "codex/sol"}},
+		},
 	}
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			code, err, _, _ := runCLI(t, directory, test.args)
-			if code != exitUsage || err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("Run(%q) = %d, %v, want %d and text %q", test.args, code, err, exitUsage, test.want)
-			}
-		})
+	seats, arbiter, err := meetingSeats(context.Background(), values, configuration, registry, "review", func(context.Context, string) (config.Route, error) {
+		return config.Route{Harness: "codex", Model: stringPointer("tier")}, nil
+	})
+	if err != nil {
+		t.Fatalf("meetingSeats() returned unexpected error: %v", err)
+	}
+	if len(seats) != 3 || seats[0].Persona != "other" || seats[1].Persona != "one" || seats[2].Persona != "one" || seats[1].Route.String() != "codex/sol" || seats[2].Route.String() != "claude/opus" {
+		t.Fatalf("meetingSeats() = %#v, want tier seat plus two deduplicated seats for cast-only persona", seats)
+	}
+	if arbiter.Persona != "chair" || arbiter.Route.String() != "grok/judge" {
+		t.Fatalf("meetingSeats() arbiter = %#v, want pinned arbiter", arbiter)
 	}
 }
 
-func TestReportMeetingReturnsEveryPositionWhenArbiterFails(t *testing.T) {
-	one := "one answer"
-	two := "two answer"
+func TestMeetingArbiterRejectsMultiRouteTarget(t *testing.T) {
+	configuration := config.Config{Latest: map[string]string{"codex": "sol", "claude": "opus"}, Tiers: map[string]config.Tier{"review": {Name: "review"}}}
+	registry := router.NewMapRegistry(map[string]harness.Adapter{
+		"codex":  castAdapter{models: []string{"sol"}, latest: "sol"},
+		"claude": castAdapter{models: []string{"opus"}, latest: "opus"},
+	})
+	_, err := meetingArbiter(context.Background(), "chair=latest", modelResolver(configuration, registry), func(context.Context, string) (config.Route, error) {
+		return config.Route{}, nil
+	}, "review")
+	if err == nil || !strings.Contains(err.Error(), "resolves to several routes") {
+		t.Fatalf("meetingArbiter() error = %v, want multi-route usage error", err)
+	}
+}
+
+func TestReportMeetingCarriesSeatResolutionAndFailures(t *testing.T) {
+	answer := "one answer"
+	reading := "arbiter reading"
 	result := meeting.Result{
-		Question:     "question",
-		Participants: []string{"one", "two"},
+		Question: "question",
 		Positions: []meeting.Position{
-			{Persona: "one", Response: doneResponse(one, "codex")},
-			{Persona: "two", Response: doneResponse(two, "claude")},
+			{Seat: meeting.Seat{Persona: "one", Route: testRoute("codex", "sol"), Target: "codex/latest", LatestSource: "project override"}, Response: doneResponse(answer, "codex")},
+			{Seat: meeting.Seat{Persona: "one", Route: testRoute("claude", "opus"), Target: "claude/latest", LatestSource: "landing default"}, Failure: "harness failed"},
 		},
-		Arbiter:  &meeting.Reading{Failure: "harness failed"},
-		Failures: []meeting.Failure{{Stage: "arbiter", Persona: "chair", Error: "harness failed"}},
+		Arbiter:  &meeting.Reading{Seat: meeting.Seat{Persona: "chair", Route: testRoute("grok", "judge")}, Response: doneResponse(reading, "grok")},
+		Failures: []meeting.Failure{{Stage: "participant", Seat: meeting.Seat{Persona: "one", Route: testRoute("claude", "opus")}, Error: "harness failed"}},
 	}
 	output := &bytes.Buffer{}
 	code, err := reportMeeting(result, false, output)
 	if err != nil || code != exitFailed {
 		t.Fatalf("reportMeeting() = %d, %v, want %d, nil", code, err, exitFailed)
 	}
-	for _, want := range []string{"## one\none answer", "## two\ntwo answer", "participant: one (harness: codex, model: unpinned, not cast)", "arbiter chair: harness failed"} {
+	for _, want := range []string{"seat: one  codex/sol (latest; project override)", "## one · codex/sol\none answer", "## arbiter · chair · grok/judge\narbiter reading", "participant one · claude/opus: harness failed"} {
 		if !strings.Contains(output.String(), want) {
 			t.Fatalf("reportMeeting() output = %q, want %q", output.String(), want)
 		}
 	}
-}
-
-func TestReportMeetingJSONReconstructsRound(t *testing.T) {
-	answer := "optimist position"
-	reading := "arbiter reading"
-	result := meeting.Result{
-		Question:     "question",
-		Participants: []string{"optimist", "skeptic"},
-		Casts:        map[string]config.Route{"optimist": {Harness: "codex"}},
-		Positions: []meeting.Position{
-			{Persona: "optimist", Response: doneResponse(answer, "codex")},
-			{Persona: "skeptic", Failure: "harness failed"},
-		},
-		Arbiter:  &meeting.Reading{Response: doneResponse(reading, "claude")},
-		Failures: []meeting.Failure{{Stage: "participant", Persona: "skeptic", Error: "harness failed"}},
-	}
-	output := &bytes.Buffer{}
-	code, err := reportMeeting(result, true, output)
+	jsonOutput := &bytes.Buffer{}
+	code, err = reportMeeting(result, true, jsonOutput)
 	if err != nil || code != exitFailed {
-		t.Fatalf("reportMeeting() = %d, %v, want %d, nil", code, err, exitFailed)
+		t.Fatalf("reportMeeting(JSON) = %d, %v, want %d, nil", code, err, exitFailed)
 	}
 	var reported meetingResult
-	if err := json.Unmarshal(output.Bytes(), &reported); err != nil {
-		t.Fatalf("reportMeeting() JSON could not be decoded: %v", err)
+	if err := json.Unmarshal(jsonOutput.Bytes(), &reported); err != nil {
+		t.Fatalf("reportMeeting(JSON) could not decode: %v", err)
 	}
-	if len(reported.Positions) != 2 || reported.Positions[0].Answer == nil || *reported.Positions[0].Answer != answer || !reported.Positions[0].Cast || reported.Arbiter == nil || reported.Arbiter.Answer == nil || *reported.Arbiter.Answer != reading || len(reported.Failures) != 1 {
-		t.Fatalf("reportMeeting() JSON = %#v, want reconstructible positions, arbiter reading, and failures", reported)
+	if len(reported.Positions) != 2 || reported.Positions[0].Target != "codex/latest" || reported.Positions[0].LatestSource != "project override" || reported.Positions[1].Error != "harness failed" || reported.Arbiter == nil || reported.Arbiter.Persona != "chair" {
+		t.Fatalf("reportMeeting(JSON) = %#v, want per-seat route, target, latest source, and status", reported)
 	}
 }
 
-func TestParseArgumentsKeepsOneRoundMeetingSurface(t *testing.T) {
-	values, positionals, err := parseArguments([]string{"meeting", "--persona", "one", "--persona", "two", "--arbiter", "chair", "--cast", "one=codex/gpt-5.6-terra", "question"})
+func TestParseArgumentsKeepsMeetingTargets(t *testing.T) {
+	values, positionals, err := parseArguments([]string{"meeting", "--arbiter", "chair=claude/latest", "--cast", "one=latest,codex/sol", "question"})
 	if err != nil {
 		t.Fatalf("parseArguments() returned unexpected error: %v", err)
 	}
-	if strings.Join(values.Personas, ",") != "one,two" || values.Arbiter.Value != "chair" || len(values.Casts) != 1 || values.Casts[0].Route.Model == nil || *values.Casts[0].Route.Model != "gpt-5.6-terra" || strings.Join(positionals, ",") != "meeting,question" {
-		t.Fatalf("parseArguments() = %#v, %q, want one-round meeting options", values, positionals)
-	}
-	removedOption := "--min" + "-rounds"
-	if _, _, err := parseArguments([]string{"meeting", removedOption, "2", "question"}); err == nil {
-		t.Fatal("parseArguments() accepted a removed meeting option")
+	if values.Arbiter.Value != "chair=claude/latest" || len(values.Casts) != 1 || values.Casts[0].Route.Target != "latest,codex/sol" || strings.Join(positionals, ",") != "meeting,question" {
+		t.Fatalf("parseArguments() = %#v, %q, want meeting target values", values, positionals)
 	}
 }
 
-func TestMeetingHelpCarriesTheProtocol(t *testing.T) {
+func TestMeetingHelpCarriesSeatSyntax(t *testing.T) {
 	code, err, stdout, _ := runCLI(t, t.TempDir(), []string{"meeting", "--help"})
 	if err != nil || code != exitOK {
 		t.Fatalf("Run(meeting --help) = %d, %v, want %d, nil", code, err, exitOK)
 	}
-	for _, want := range []string{"one deliberation round", "in parallel", "decides whether to convene another", "verbatim", "synthesis from the arbiter as ordinary work"} {
+	for _, want := range []string{"persona>[=<target>]", "participant seats", "may not\nresolve to several routes", "validates every seat"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("meeting help = %q, want %q", stdout.String(), want)
 		}
-	}
-}
-
-func TestMeetingCastsAcceptOutsideTierAndValidateModel(t *testing.T) {
-	registry := router.NewMapRegistry(map[string]harness.Adapter{"remote": castAdapter{models: []string{"outside-tier"}}})
-	casts, err := meetingCasts(context.Background(), []castOption{{Persona: "one", Route: routeOption{Harness: "remote", Model: modelPointer("outside-tier")}}}, []string{"one", "two"}, registry)
-	if err != nil || casts["one"].Harness != "remote" {
-		t.Fatalf("meetingCasts() = %#v, %v, want cast outside tier", casts, err)
-	}
-	_, err = meetingCasts(context.Background(), []castOption{{Persona: "one", Route: routeOption{Harness: "remote", Model: modelPointer("missing")}}}, []string{"one", "two"}, registry)
-	if err != nil {
-		t.Fatalf("meetingCasts() error = %v, want adapter validation", err)
 	}
 }
 
@@ -139,16 +130,23 @@ func doneResponse(answer string, provider string) *dispatch.Response {
 	return &dispatch.Response{Projection: jobs.Projection{Status: harness.JobStatusDone, Output: &answer, Provider: provider}}
 }
 
-func modelPointer(value string) *string { return &value }
+func testRoute(harnessID string, model string) config.Route {
+	return config.Route{Harness: harnessID, Model: stringPointer(model)}
+}
+
+func modelResolver(configuration config.Config, registry router.Registry) modeltarget.Resolver {
+	return modeltarget.New(configuration, registry)
+}
 
 type castAdapter struct {
 	models []string
+	latest string
 }
 
 func (adapter castAdapter) ID() string { return "remote" }
 
 func (adapter castAdapter) ModelCatalog() harness.ModelCatalog {
-	return harness.ModelCatalog{Models: append([]string(nil), adapter.models...), Authority: harness.ModelCatalogAuthoritative}
+	return harness.ModelCatalog{Models: append([]string(nil), adapter.models...), Latest: adapter.latest, Authority: harness.ModelCatalogAuthoritative}
 }
 
 func (adapter castAdapter) ValidateModel(context.Context, string) harness.ModelValidation {

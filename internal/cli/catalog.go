@@ -11,6 +11,7 @@ import (
 
 	"github.com/on-mission/landing/internal/config"
 	"github.com/on-mission/landing/internal/harness"
+	"github.com/on-mission/landing/internal/modeltarget"
 	"github.com/on-mission/landing/internal/persona"
 	"github.com/on-mission/landing/internal/router"
 )
@@ -180,6 +181,15 @@ func listModels(ctx context.Context, invocationDir string, registry router.Regis
 	slices.SortFunc(reports, func(first modelReport, second modelReport) int {
 		return strings.Compare(first.Route, second.Route)
 	})
+	latestReported := make(map[string]struct{}, len(reports))
+	for index := range reports {
+		if _, exists := latestReported[reports[index].Harness]; exists {
+			reports[index].Latest = ""
+			reports[index].LatestSource = ""
+			continue
+		}
+		latestReported[reports[index].Harness] = struct{}{}
+	}
 	if asJSON {
 		encoded, err := json.MarshalIndent(reports, "", "  ")
 		if err != nil {
@@ -217,8 +227,13 @@ func tierMembership(ctx context.Context, invocationDir string, registry router.R
 	if err != nil {
 		return membership
 	}
+	resolver := modeltarget.New(*configuration, registry)
 	for _, name := range configuration.TierNames() {
-		for _, route := range configuration.Tiers[name].Routes {
+		tier, _, err := resolver.ResolveTier(configuration.Tiers[name])
+		if err != nil {
+			continue
+		}
+		for _, route := range tier.Routes {
 			identifier := route.String()
 			if slices.Contains(membership[identifier], name) {
 				continue
@@ -244,13 +259,19 @@ func writeModelReports(reports []modelReport, stdout io.Writer) (int, error) {
 		routeWidth = max(routeWidth, len(report.Route))
 		statusWidth = max(statusWidth, len(report.Status))
 	}
+	latestReported := make(map[string]struct{}, len(reports))
 	for _, report := range reports {
+		if report.Latest != "" {
+			if _, exists := latestReported[report.Harness]; !exists {
+				if _, err := fmt.Fprintf(stdout, "%s latest: %s (%s)\n", report.Harness, report.Latest, report.LatestSource); err != nil {
+					return exitFailed, err
+				}
+				latestReported[report.Harness] = struct{}{}
+			}
+		}
 		line := fmt.Sprintf("%-*s  %-*s  tiers: %s", routeWidth, report.Route, statusWidth, report.Status, tiersText(report.Tiers))
 		if report.ModelCatalog == harness.ModelCatalogAdvisory {
 			line += "  (advisory catalog; other models may be available)"
-		}
-		if report.Latest != "" {
-			line += "  latest: " + report.Latest + " (" + report.LatestSource + ")"
 		}
 		if _, err := fmt.Fprintln(stdout, line); err != nil {
 			return exitFailed, err

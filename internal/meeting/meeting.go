@@ -4,6 +4,7 @@ package meeting
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -12,15 +13,25 @@ import (
 	"github.com/on-mission/landing/internal/harness"
 )
 
+// Dispatcher is the execution boundary a meeting needs. Routes are concrete
+// before a round starts, so validation can finish before any seat dispatches.
 type Dispatcher interface {
 	Dispatch(context.Context, dispatch.Request) (dispatch.Response, error)
+	ValidateRoute(context.Context, config.Route) error
+}
+
+// Seat is one persona on one concrete route in a single meeting round.
+type Seat struct {
+	Persona      string
+	Route        config.Route
+	Target       string
+	LatestSource string
 }
 
 type Request struct {
 	Question string
-	Personas []string
-	Arbiter  string
-	Casts    map[string]config.Route
+	Seats    []Seat
+	Arbiter  Seat
 	Tier     string
 	CWD      string
 	Label    *string
@@ -28,61 +39,67 @@ type Request struct {
 }
 
 type Position struct {
-	Persona  string
+	Seat     Seat
 	Response *dispatch.Response
 	Failure  string
 }
 
 type Reading struct {
+	Seat     Seat
 	Response *dispatch.Response
 	Failure  string
 }
 
 type Failure struct {
-	Stage   string
-	Persona string
-	Error   string
+	Stage string
+	Seat  Seat
+	Error string
 }
 
 type Result struct {
-	Question     string
-	Participants []string
-	Casts        map[string]config.Route
-	Positions    []Position
-	Arbiter      *Reading
-	Failures     []Failure
+	Question  string
+	Seats     []Seat
+	Positions []Position
+	Arbiter   *Reading
+	Failures  []Failure
 }
 
 type positionResult struct {
 	index    int
-	persona  string
+	seat     Seat
 	response dispatch.Response
 	err      error
 }
 
-func Validate(personas []string, arbiter string) error {
-	if arbiter == "" {
+type validationResult struct {
+	route config.Route
+	err   error
+}
+
+func Validate(seats []Seat, arbiter Seat) error {
+	if arbiter.Persona == "" {
 		return fmt.Errorf("meeting has no arbiter")
 	}
-	if len(personas) < 2 {
-		return fmt.Errorf("meeting needs at least two participants; it has %d", len(personas))
+	if arbiter.Route.Harness == "" {
+		return fmt.Errorf("meeting arbiter has no route")
 	}
-	seen := make(map[string]struct{}, len(personas))
-	for _, persona := range personas {
-		if persona == "" {
+	if len(seats) < 2 {
+		return fmt.Errorf("meeting needs at least two participant seats; it has %d", len(seats))
+	}
+	for _, seat := range seats {
+		if seat.Persona == "" {
 			return fmt.Errorf("meeting names an empty persona")
 		}
-		if _, ok := seen[persona]; ok {
-			return fmt.Errorf("meeting names persona %q more than once", persona)
+		if seat.Route.Harness == "" {
+			return fmt.Errorf("meeting seat for %q has no route", seat.Persona)
 		}
-		seen[persona] = struct{}{}
 	}
 
 	return nil
 }
 
 func Run(ctx context.Context, dispatcher Dispatcher, request Request) (Result, error) {
-	if err := Validate(request.Personas, request.Arbiter); err != nil {
+	if err := Validate(request.Seats, request.Arbiter); err != nil {
 		return Result{}, err
 	}
 	if request.Question == "" {
@@ -94,22 +111,24 @@ func Run(ctx context.Context, dispatcher Dispatcher, request Request) (Result, e
 
 	meetingContext, cancel := meetingContext(ctx, request.Timeout)
 	defer cancel()
-	positions := dispatchParticipants(meetingContext, dispatcher, request)
+	if err := validateRoutes(meetingContext, dispatcher, request.Seats, request.Arbiter); err != nil {
+		return Result{}, err
+	}
+	positions := dispatchSeats(meetingContext, dispatcher, request)
 	result := Result{
-		Question:     request.Question,
-		Participants: append([]string(nil), request.Personas...),
-		Casts:        copyCasts(request.Casts),
-		Positions:    positions,
-		Failures:     participantFailures(positions),
+		Question:  request.Question,
+		Seats:     copySeats(request.Seats),
+		Positions: positions,
+		Failures:  participantFailures(positions),
 	}
 	if len(answered(positions)) < 2 {
-		result.Failures = append(result.Failures, Failure{Stage: "meeting", Error: "fewer than two participants answered; the round produced nothing to deliberate"})
+		result.Failures = append(result.Failures, Failure{Stage: "meeting", Error: "fewer than two participant seats answered; the round produced nothing to deliberate"})
 		return result, nil
 	}
 	reading := readPositions(meetingContext, dispatcher, request, positions)
 	result.Arbiter = &reading
 	if reading.Failure != "" {
-		result.Failures = append(result.Failures, Failure{Stage: "arbiter", Persona: request.Arbiter, Error: reading.Failure})
+		result.Failures = append(result.Failures, Failure{Stage: "arbiter", Seat: reading.Seat, Error: reading.Failure})
 	}
 
 	return result, nil
@@ -123,24 +142,83 @@ func meetingContext(ctx context.Context, timeout time.Duration) (context.Context
 	return context.WithTimeout(ctx, timeout)
 }
 
-func dispatchParticipants(ctx context.Context, dispatcher Dispatcher, request Request) []Position {
-	results := make(chan positionResult, len(request.Personas))
-	for index, persona := range request.Personas {
-		go func(index int, persona string) {
+func validateRoutes(ctx context.Context, dispatcher Dispatcher, seats []Seat, arbiter Seat) error {
+	routes := uniqueRoutes(seats, arbiter)
+	targets := routeTargets(seats, arbiter)
+	results := make(chan validationResult, len(routes))
+	for _, route := range routes {
+		go func(route config.Route) {
+			results <- validationResult{route: route, err: dispatcher.ValidateRoute(ctx, route)}
+		}(route)
+	}
+	failures := make([]string, 0)
+	for range routes {
+		result := <-results
+		if result.err == nil {
+			continue
+		}
+		failures = append(failures, fmt.Sprintf("target %s resolved to %s is unavailable: %v", strings.Join(targets[result.route.String()], ", "), result.route.String(), result.err))
+	}
+	if len(failures) == 0 {
+		return nil
+	}
+
+	return fmt.Errorf("meeting model preflight refused before dispatching seats: %s", strings.Join(failures, "; "))
+}
+
+func routeTargets(seats []Seat, arbiter Seat) map[string][]string {
+	allSeats := append(append([]Seat(nil), seats...), arbiter)
+	targets := make(map[string][]string, len(allSeats))
+	for _, seat := range allSeats {
+		key := seat.Route.String()
+		name := seat.Target
+		if name == "" {
+			name = key
+		}
+		if slices.Contains(targets[key], name) {
+			continue
+		}
+		targets[key] = append(targets[key], name)
+	}
+
+	return targets
+}
+
+func uniqueRoutes(seats []Seat, arbiter Seat) []config.Route {
+	allSeats := append(append([]Seat(nil), seats...), arbiter)
+	seen := make(map[string]struct{}, len(allSeats))
+	routes := make([]config.Route, 0, len(allSeats))
+	for _, seat := range allSeats {
+		key := seat.Route.String()
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		routes = append(routes, copyRoute(seat.Route))
+	}
+
+	return routes
+}
+
+func dispatchSeats(ctx context.Context, dispatcher Dispatcher, request Request) []Position {
+	results := make(chan positionResult, len(request.Seats))
+	for index, seat := range request.Seats {
+		go func(index int, seat Seat) {
+			route := copyRoute(seat.Route)
 			response, err := dispatcher.Dispatch(ctx, dispatch.Request{
 				Tier:         request.Tier,
 				Prompt:       request.Question,
 				CWD:          request.CWD,
 				Label:        request.Label,
-				Persona:      persona,
+				Persona:      seat.Persona,
 				AwaitTimeout: request.Timeout,
-				Route:        castFor(request.Casts, persona),
+				Route:        &route,
 			})
-			results <- positionResult{index: index, persona: persona, response: response, err: err}
-		}(index, persona)
+			results <- positionResult{index: index, seat: seat, response: response, err: err}
+		}(index, seat)
 	}
-	positions := make([]Position, len(request.Personas))
-	for range request.Personas {
+	positions := make([]Position, len(request.Seats))
+	for range request.Seats {
 		position := <-results
 		positions[position.index] = positionFrom(position)
 	}
@@ -149,22 +227,24 @@ func dispatchParticipants(ctx context.Context, dispatcher Dispatcher, request Re
 }
 
 func readPositions(ctx context.Context, dispatcher Dispatcher, request Request, positions []Position) Reading {
+	route := copyRoute(request.Arbiter.Route)
 	response, err := dispatcher.Dispatch(ctx, dispatch.Request{
 		Tier:         request.Tier,
 		Prompt:       arbiterPrompt(request.Question, positions),
 		CWD:          request.CWD,
 		Label:        request.Label,
-		Persona:      request.Arbiter,
+		Persona:      request.Arbiter.Persona,
 		AwaitTimeout: request.Timeout,
+		Route:        &route,
 	})
 	if err != nil {
-		return Reading{Failure: err.Error()}
+		return Reading{Seat: request.Arbiter, Failure: err.Error()}
 	}
 	if response.Status != harness.JobStatusDone {
-		return Reading{Response: &response, Failure: responseFailure(response)}
+		return Reading{Seat: request.Arbiter, Response: &response, Failure: responseFailure(response)}
 	}
 
-	return Reading{Response: &response}
+	return Reading{Seat: request.Arbiter, Response: &response}
 }
 
 func arbiterPrompt(question string, positions []Position) string {
@@ -175,7 +255,7 @@ func arbiterPrompt(question string, positions []Position) string {
 		"The participant positions:",
 	}
 	for _, position := range answered(positions) {
-		sections = append(sections, "## "+position.Persona, outputFor(position))
+		sections = append(sections, "## "+seatName(position.Seat), outputFor(position))
 	}
 	sections = append(sections,
 		"Identify only genuine conflicts: positions that cannot both be acted on. Different ground, emphasis, or disagreement outside the question is not a conflict.",
@@ -185,54 +265,47 @@ func arbiterPrompt(question string, positions []Position) string {
 	return strings.Join(sections, "\n\n")
 }
 
-func copyCasts(casts map[string]config.Route) map[string]config.Route {
-	if len(casts) == 0 {
-		return nil
-	}
-	copyOfCasts := make(map[string]config.Route, len(casts))
-	for persona, route := range casts {
-		copyOfRoute := route
-		if route.Model != nil {
-			model := *route.Model
-			copyOfRoute.Model = &model
-		}
-		copyOfCasts[persona] = copyOfRoute
-	}
-
-	return copyOfCasts
+func seatName(seat Seat) string {
+	return seat.Persona + " · " + seat.Route.String()
 }
 
-func castFor(casts map[string]config.Route, persona string) *config.Route {
-	route, ok := casts[persona]
-	if !ok {
-		return nil
-	}
-	copyOfRoute := route
-	if route.Model != nil {
-		model := *route.Model
-		copyOfRoute.Model = &model
+func copySeats(seats []Seat) []Seat {
+	copied := make([]Seat, 0, len(seats))
+	for _, seat := range seats {
+		seat.Route = copyRoute(seat.Route)
+		copied = append(copied, seat)
 	}
 
-	return &copyOfRoute
+	return copied
+}
+
+func copyRoute(route config.Route) config.Route {
+	copied := route
+	if route.Model != nil {
+		model := *route.Model
+		copied.Model = &model
+	}
+
+	return copied
 }
 
 func positionFrom(result positionResult) Position {
 	if result.err != nil {
-		return Position{Persona: result.persona, Failure: result.err.Error()}
+		return Position{Seat: result.seat, Failure: result.err.Error()}
 	}
 	response := result.response
 	if response.Status == harness.JobStatusDone {
-		return Position{Persona: result.persona, Response: &response}
+		return Position{Seat: result.seat, Response: &response}
 	}
 
-	return Position{Persona: result.persona, Response: &response, Failure: responseFailure(response)}
+	return Position{Seat: result.seat, Response: &response, Failure: responseFailure(response)}
 }
 
 func participantFailures(positions []Position) []Failure {
 	failures := make([]Failure, 0)
 	for _, position := range positions {
 		if position.Failure != "" {
-			failures = append(failures, Failure{Stage: "participant", Persona: position.Persona, Error: position.Failure})
+			failures = append(failures, Failure{Stage: "participant", Seat: position.Seat, Error: position.Failure})
 		}
 	}
 

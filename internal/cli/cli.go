@@ -35,8 +35,9 @@ const modelListHelp = `landing model list — list known model routes and effect
 USAGE
   landing model list
 
-Each row is a known route, the harness's observed state, catalog authority,
-effective latest model and source, and the tiers that configure it.
+Each row is a known route, the harness's observed state, catalog authority, and
+the tiers that configure it. Each harness's effective latest model and source
+appear once before its routes.
 An advisory catalog may be incomplete: Landing passes a valid unlisted model to
 that harness, which decides whether it can run it. Detection runs; capacity is
 not probed. Use ` + "`landing harness list`" + ` for measured availability.
@@ -53,7 +54,7 @@ USAGE
   landing --tier <name> "<prompt>"
   landing --model <target> "<prompt>"
   landing --reply <id> "<prompt>"
-  landing meeting --arbiter <name> --persona <name> --persona <name> "<question>"
+  landing meeting --arbiter <persona>[=<target>] [--persona <persona>]... [--cast <persona>=<target>]... "<question>"
   landing comms [--inbox | --history | --agent <name> --message <text>]
   landing comms --install | --uninstall
   landing who [<name> | --as <name>]
@@ -72,8 +73,8 @@ OPTIONS
   --model <target>              Model target for a dispatch, in place of a tier.
   --reply <id>                  Continue an existing thread.
   --persona <name>              Persona for a dispatch.
-  --arbiter <name>              Persona that reads a meeting round.
-  --cast <persona>=<route>      Pin one meeting participant to harness/model.
+  --arbiter <persona>[=<target>] Persona that reads a meeting round, optionally pinned to one route.
+  --cast <persona>=<target>     Seat a meeting participant on one or more target routes.
   --cwd <path>                  Dispatch working directory.
   --label <text>                Dispatch label.
   --timeout <ms>                Dispatch timeout; no limit by default.
@@ -101,7 +102,7 @@ OPTIONS
 const meetingHelp = `landing meeting — convene one deliberation round.
 
 USAGE
-  landing meeting --arbiter <persona> --persona <persona> --persona <persona> [--cast <persona>=<harness>/<model>] [--tier <name>] "<question>"
+  landing meeting --arbiter <persona>[=<target>] [--persona <persona>]... [--cast <persona>=<target>]... [--tier <name>] "<question>"
 
 A meeting is useful when independent perspectives can expose a real decision
 conflict. Landing dispatches every participant in parallel with only the
@@ -114,15 +115,17 @@ further round, put the prior positions verbatim in the new question together
 with what the arbiter flagged. Once deliberation is complete, request a
 synthesis from the arbiter as ordinary work.
 
-The arbiter is required; at least two participants are required. An arbiter
-may also be a participant, in a separate instance and context. --cast applies
-only to a named participant and may name any installed supported harness and a
-model it can reach, even outside the selected tier.
+The arbiter is required; at least two participant seats are required. An arbiter
+may also be a participant, in a separate instance and context. A cast makes its
+persona a participant and may resolve to several routes; duplicate routes for
+that persona collapse. --arbiter may pin one route, while its target may not
+resolve to several routes. Landing validates every seat and arbiter route before
+it dispatches any seat.
 
 OPTIONS
-  --arbiter <persona>           Persona that reads the participant positions.
-  --persona <persona>           Participant; specify at least twice.
-  --cast <persona>=<route>      Pin one participant to harness/model.
+  --arbiter <persona>[=<target>] Persona that reads positions, optionally pinned to one target route.
+  --persona <persona>           Participant; uncast personas receive one tier-routed seat.
+  --cast <persona>=<target>     Seat a persona on every route the target resolves to.
   --tier <name>                 Tier for uncast participants and the arbiter.
   --prompt-file <path>          Question file; takes precedence over argv and stdin.
   --cwd <path>                  Dispatch working directory.
