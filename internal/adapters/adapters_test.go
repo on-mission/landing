@@ -309,6 +309,14 @@ func TestModelRejectionsAreDefinitiveOnlyForKnownHarnessMessages(t *testing.T) {
 	}
 }
 
+func TestClaudeRejectionEvidenceUsesOnlyResultText(t *testing.T) {
+	result := `There's an issue with the selected model (missing). It may not exist or you may not have access to it.`
+	probe := modelProbe{stdout: `{"type":"result","is_error":true,"result":"` + result + `"}`}
+	if got := claudeRejectionEvidence(probe); got != result {
+		t.Fatalf("claudeRejectionEvidence() = %q, want %q", got, result)
+	}
+}
+
 func TestGrokValidatesAnUnlistedModelWithAProbe(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("model probe fixture uses a POSIX shell script")

@@ -242,6 +242,10 @@ type Config struct {
 	// Tiers are the resolved tiers, keyed by name.
 	Tiers map[string]Tier
 
+	// Latest overrides Landing's shipped latest model for the harnesses this
+	// project names. Harnesses absent from this map retain their shipped value.
+	Latest map[string]string
+
 	// Source records the file this configuration resolved from.
 	Source Source
 }

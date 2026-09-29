@@ -15,6 +15,7 @@ import (
 )
 
 type routeOption struct {
+	Target               string
 	Harness              string
 	Model                *string
 	FallbackBelowPercent *float64
@@ -157,11 +158,7 @@ func setOption(values *options, name string, value string) error {
 		if values.Model != nil {
 			return &usageError{message: "--model is present more than once"}
 		}
-		route, err := parseModelRoute(value)
-		if err != nil {
-			return err
-		}
-		values.Model = &route
+		values.Model = &routeOption{Target: value}
 	case "reply":
 		values.Reply = option
 	case "persona":
@@ -284,7 +281,7 @@ func parseCast(value string) (castOption, error) {
 
 func parseRoute(value string) (routeOption, error) {
 	harness, model, hasModel := strings.Cut(value, "/")
-	if harness == "" || (harness != "cline" && strings.Contains(model, "/")) {
+	if harness == "" {
 		return routeOption{}, &usageError{message: fmt.Sprintf("--route has invalid value %q; expected harness or harness/model", value)}
 	}
 	if !hasModel || model == "" {
@@ -294,9 +291,9 @@ func parseRoute(value string) (routeOption, error) {
 	return routeOption{Harness: harness, Model: &model}, nil
 }
 
-// parseModelRoute parses a dispatch's --model value. Some configured harnesses
-// carry no model, so a bare harness names that execution path exactly; a
-// harness/model value still pins both parts of the path.
+// parseModelRoute remains a compatibility helper for callers that already
+// hold a concrete route. Command-line --model values are model targets and are
+// resolved after project configuration has loaded.
 func parseModelRoute(value string) (routeOption, error) {
 	harnessName, model, hasModel := strings.Cut(value, "/")
 	if harnessName == "" || (harnessName != "cline" && strings.Contains(model, "/")) || (hasModel && model == "") {

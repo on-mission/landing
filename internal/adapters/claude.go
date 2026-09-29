@@ -65,7 +65,7 @@ func (adapter *claudeAdapter) ValidateModel(ctx context.Context, model string) h
 		"--permission-mode", "plan",
 	}, nil)
 	if claudeUnknownModel(probe.output()) {
-		return harness.InvalidModel(rejectionEvidence(probe.output(), claudeUnknownModel))
+		return harness.InvalidModel(claudeRejectionEvidence(probe))
 	}
 	result := parseClaudeResult(probe.stdout)
 	if probe.err == nil && result != nil && result.IsError != nil && !*result.IsError && result.Result != nil && *result.Result != "" {
@@ -73,6 +73,15 @@ func (adapter *claudeAdapter) ValidateModel(ctx context.Context, model string) h
 	}
 
 	return harness.UnverifiedModel(probeFailureEvidence(probe))
+}
+
+func claudeRejectionEvidence(probe modelProbe) string {
+	result := parseClaudeResult(probe.stdout)
+	if result != nil && result.Result != nil && *result.Result != "" {
+		return *result.Result
+	}
+
+	return rejectionEvidence(probe.output(), claudeUnknownModel)
 }
 
 func claudeUnknownModel(output string) bool {

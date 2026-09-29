@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -21,6 +22,7 @@ import (
 type projectConfigFile struct {
 	Version     int             `json:"version"`
 	DefaultTier string          `json:"defaultTier"`
+	Latest      json.RawMessage `json:"latest"`
 	Tiers       json.RawMessage `json:"tiers"`
 }
 
@@ -119,10 +121,15 @@ func resolveProjectFile(file projectConfigFile) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	latest, err := decodeProjectLatest(file.Latest)
+	if err != nil {
+		return Config{}, err
+	}
 
 	resolved := Config{
 		Version:     SchemaVersion,
 		DefaultTier: file.DefaultTier,
+		Latest:      latest,
 		Tiers:       make(map[string]Tier, len(projectTiers)),
 	}
 	for name, tier := range projectTiers {
@@ -135,6 +142,25 @@ func resolveProjectFile(file projectConfigFile) (Config, error) {
 	}
 
 	return resolved, nil
+}
+
+func decodeProjectLatest(raw json.RawMessage) (map[string]string, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil, fmt.Errorf("field %q has value null, expected an object", "latest")
+	}
+	var latest map[string]string
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	if err := decoder.Decode(&latest); err != nil {
+		return nil, err
+	}
+	if err := ensureJSONEOF(decoder); err != nil {
+		return nil, err
+	}
+
+	return maps.Clone(latest), nil
 }
 
 func projectConfigResolutionError(path string, cause error) error {
@@ -293,6 +319,11 @@ func validatePolicy(config Config) []string {
 			}
 		}
 	}
+	for harnessID, model := range config.Latest {
+		if !validModelName(model) {
+			problems = append(problems, fmt.Sprintf("field \"latest\" harness %q has invalid value %q", harnessID, model))
+		}
+	}
 
 	return problems
 }
@@ -321,6 +352,11 @@ func validateHarnesses(config Config, harnesses Harnesses) []string {
 			}
 		}
 	}
+	for harnessID := range config.Latest {
+		if _, ok := known[harnessID]; !ok {
+			problems = append(problems, fmt.Sprintf("field \"latest\" has unsupported harness %q", harnessID))
+		}
+	}
 
 	return problems
 }
@@ -339,7 +375,7 @@ func validateModels(ctx context.Context, config Config, harnesses Harnesses) []s
 	for _, name := range config.TierNames() {
 		tier := config.Tiers[name]
 		for _, route := range tier.Routes {
-			if route.Model == nil || *route.Model == "" {
+			if route.Model == nil || *route.Model == "" || *route.Model == "latest" {
 				continue
 			}
 			validation := validator.ValidateModel(ctx, route.Harness, *route.Model)
@@ -348,6 +384,13 @@ func validateModels(ctx context.Context, config Config, harnesses Harnesses) []s
 			}
 			problems = append(problems, fmt.Sprintf("model %s is %s: %s", route.String(), validation.Status, validation.Evidence))
 		}
+	}
+	for harnessID, model := range config.Latest {
+		validation := validator.ValidateModel(ctx, harnessID, model)
+		if validation.Status == harness.ModelValid {
+			continue
+		}
+		problems = append(problems, fmt.Sprintf("model %s/%s is %s: %s", harnessID, model, validation.Status, validation.Evidence))
 	}
 
 	return problems
@@ -376,11 +419,24 @@ func validateHarnessConfiguration(config Config, harnesses Harnesses) []string {
 			if _, supported := known[route.Harness]; !supported {
 				continue
 			}
+			if route.Model != nil && *route.Model == "latest" {
+				continue
+			}
 			routesByHarness[route.Harness] = append(routesByHarness[route.Harness], harness.ConfiguredRoute{
 				Location: fmt.Sprintf("tier %q route %d", tier.Name, index),
 				Model:    route.Model,
 			})
 		}
+	}
+	for harnessID, model := range config.Latest {
+		if _, supported := known[harnessID]; !supported {
+			continue
+		}
+		configuredModel := model
+		routesByHarness[harnessID] = append(routesByHarness[harnessID], harness.ConfiguredRoute{
+			Location: fmt.Sprintf("latest override for harness %q", harnessID),
+			Model:    &configuredModel,
+		})
 	}
 
 	problems := make([]string, 0)

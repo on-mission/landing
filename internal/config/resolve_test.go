@@ -329,6 +329,21 @@ func TestLoad(t *testing.T) {
 	}
 }
 
+func TestLoadAcceptsLatestShapeWithoutProbing(t *testing.T) {
+	root := t.TempDir()
+	writeConfiguration(t, filepath.Join(root, ConfigFileName), []byte(`{"version":1,"latest":{"codex":"newly-released"},"tiers":{"frontier":{"routes":[{"harness":"codex","model":"latest"}]}}}`))
+	configuration, err := Load(context.Background(), root, testHarnesses)
+	if err != nil {
+		t.Fatalf("Load() returned unexpected error: %v", err)
+	}
+	if configuration.Latest["codex"] != "newly-released" {
+		t.Fatalf("Load().Latest = %#v, want project override", configuration.Latest)
+	}
+	if model := configuration.Tiers["frontier"].Routes[0].Model; model == nil || *model != "latest" {
+		t.Fatalf("Load().Tiers[\"frontier\"].Routes = %#v, want unresolved latest", configuration.Tiers["frontier"].Routes)
+	}
+}
+
 // This catches configuration rejecting a newly released model solely because
 // Landing's known-model examples are stale.
 func TestLoadValidatesHarnessModels(t *testing.T) {

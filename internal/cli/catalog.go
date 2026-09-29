@@ -134,6 +134,7 @@ type modelReport struct {
 	Selectable   bool                          `json:"selectable"`
 	ModelCatalog harness.ModelCatalogAuthority `json:"modelCatalog"`
 	Latest       string                        `json:"latest,omitempty"`
+	LatestSource string                        `json:"latestSource,omitempty"`
 }
 
 // listModels reports every route a caller can name, from the harnesses Landing
@@ -146,6 +147,7 @@ type modelReport struct {
 // `landing harness list` is for.
 func listModels(ctx context.Context, invocationDir string, registry router.Registry, asJSON bool, stdout io.Writer) (int, error) {
 	membership := tierMembership(ctx, invocationDir, registry)
+	configuration, configurationErr := loadConfiguration(ctx, invocationDir, registry)
 	reports := make([]modelReport, 0, len(membership))
 	for _, id := range sortedHarnessIDs(registry) {
 		adapter, err := registry.Resolve(id)
@@ -154,24 +156,25 @@ func listModels(ctx context.Context, invocationDir string, registry router.Regis
 		}
 		status := adapter.Detect(ctx).Status
 		catalog := adapter.ModelCatalog()
+		latest, latestSource := effectiveLatest(id, catalog, configuration, configurationErr)
 		models := catalog.Models
 		for _, model := range models {
 			route := config.Route{Harness: id, Model: &model}
-			reports = append(reports, modelReport{Route: route.String(), Harness: id, Model: model, Status: status, Tiers: membership[route.String()], Selectable: true, ModelCatalog: catalog.Authority, Latest: catalog.Latest})
+			reports = append(reports, modelReport{Route: route.String(), Harness: id, Model: model, Status: status, Tiers: membership[route.String()], Selectable: true, ModelCatalog: catalog.Authority, Latest: latest, LatestSource: latestSource})
 		}
 		for route, tiers := range membership {
 			harnessID, model, hasModel := strings.Cut(route, "/")
 			if harnessID != id || !hasModel || slices.Contains(models, model) {
 				continue
 			}
-			reports = append(reports, modelReport{Route: route, Harness: id, Model: model, Status: status, Tiers: tiers, Selectable: true, ModelCatalog: catalog.Authority, Latest: catalog.Latest})
+			reports = append(reports, modelReport{Route: route, Harness: id, Model: model, Status: status, Tiers: tiers, Selectable: true, ModelCatalog: catalog.Authority, Latest: latest, LatestSource: latestSource})
 		}
 		// A harness may expose no model at all, and a tier may configure one
 		// without naming a model. Either way it is an execution path a caller
 		// can name with --model.
 		_, configuredBare := membership[id]
 		if configuredBare || len(models) == 0 {
-			reports = append(reports, modelReport{Route: id, Harness: id, Status: status, Tiers: membership[id], Selectable: true, ModelCatalog: catalog.Authority, Latest: catalog.Latest})
+			reports = append(reports, modelReport{Route: id, Harness: id, Status: status, Tiers: membership[id], Selectable: true, ModelCatalog: catalog.Authority, Latest: latest, LatestSource: latestSource})
 		}
 	}
 	slices.SortFunc(reports, func(first modelReport, second modelReport) int {
@@ -190,6 +193,19 @@ func listModels(ctx context.Context, invocationDir string, registry router.Regis
 	}
 
 	return writeModelReports(reports, stdout)
+}
+
+func effectiveLatest(id string, catalog harness.ModelCatalog, configuration *config.Config, configurationErr error) (string, string) {
+	if configurationErr == nil && configuration != nil {
+		if model, ok := configuration.Latest[id]; ok {
+			return model, "project override"
+		}
+	}
+	if catalog.Latest == "" {
+		return "", ""
+	}
+
+	return catalog.Latest, "landing default"
 }
 
 // tierMembership maps a route to the tiers that configure it. A project whose
@@ -234,7 +250,7 @@ func writeModelReports(reports []modelReport, stdout io.Writer) (int, error) {
 			line += "  (advisory catalog; other models may be available)"
 		}
 		if report.Latest != "" {
-			line += "  latest: " + report.Latest
+			line += "  latest: " + report.Latest + " (" + report.LatestSource + ")"
 		}
 		if _, err := fmt.Fprintln(stdout, line); err != nil {
 			return exitFailed, err

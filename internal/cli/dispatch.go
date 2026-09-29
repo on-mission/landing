@@ -18,6 +18,7 @@ import (
 	"github.com/on-mission/landing/internal/jobs"
 	"github.com/on-mission/landing/internal/journal"
 	"github.com/on-mission/landing/internal/meeting"
+	"github.com/on-mission/landing/internal/modeltarget"
 	"github.com/on-mission/landing/internal/modelvalidation"
 	"github.com/on-mission/landing/internal/paths"
 	"github.com/on-mission/landing/internal/router"
@@ -38,6 +39,21 @@ func runDispatch(ctx context.Context, inputs Inputs, values options, positionals
 	target, err := selectTarget(ctx, values, isReply, *configuration, registry)
 	if err != nil {
 		return exitUsage, err
+	}
+	if target.Tier != "" {
+		tier := configuration.Tiers[target.Tier]
+		executionTier, tierResolutions, err := modeltarget.New(*configuration, registry).ResolveTier(tier)
+		if err != nil {
+			return exitUsage, err
+		}
+		executionConfiguration := *configuration
+		executionConfiguration.Tiers = make(map[string]config.Tier, len(configuration.Tiers))
+		for name, configuredTier := range configuration.Tiers {
+			executionConfiguration.Tiers[name] = configuredTier
+		}
+		executionConfiguration.Tiers[target.Tier] = executionTier
+		configuration = &executionConfiguration
+		target.resolutions = append(target.resolutions, tierResolutions...)
 	}
 	prompt, err := resolvePrompt(values.PromptFile, positionals, inputs.Stdin, inputs.StdinIsTerminal)
 	if err != nil {
@@ -72,7 +88,7 @@ func runDispatch(ctx context.Context, inputs Inputs, values options, positionals
 		return exitFailed, err
 	}
 
-	return report(response, values.JSON, inputs.Stdout, inputs.Stderr)
+	return report(response, values.JSON, inputs.Stdout, inputs.Stderr, resolutionFor(response, target.resolutions))
 }
 
 func runMeeting(ctx context.Context, inputs Inputs, values options, positionals []string, invocationDir string, registry router.Registry) (int, error) {
@@ -207,8 +223,9 @@ func loadConfiguration(ctx context.Context, invocationDir string, registry route
 // dispatchTarget is what a dispatch runs on: a tier Landing routes within, or
 // a route the caller named outright. Exactly one of the two is set.
 type dispatchTarget struct {
-	Tier  string
-	Route *config.Route
+	Tier        string
+	Route       *config.Route
+	resolutions []modeltarget.Resolution
 }
 
 // name is what progress output and diagnostics call this target.
@@ -238,12 +255,31 @@ func selectTarget(ctx context.Context, values options, reply bool, configuration
 	if reply {
 		return dispatchTarget{}, &usageError{message: "--model is present with --reply; a reply continues on the route its thread already runs on"}
 	}
-	route, err := pinnedRoute(ctx, *values.Model, registry, "--model")
+	if values.Model.Target == "" {
+		route, err := pinnedRoute(ctx, *values.Model, registry, "--model")
+		if err != nil {
+			return dispatchTarget{}, err
+		}
+
+		return dispatchTarget{Route: &route}, nil
+	}
+	resolutions, err := modeltarget.New(configuration, registry).Resolve(values.Model.Target)
+	if err != nil {
+		return dispatchTarget{}, &usageError{message: err.Error()}
+	}
+	if len(resolutions) != 1 {
+		routes := make([]string, 0, len(resolutions))
+		for _, resolution := range resolutions {
+			routes = append(routes, resolution.Route.String())
+		}
+		return dispatchTarget{}, &usageError{message: fmt.Sprintf("--model target %q resolves to several routes: %s", values.Model.Target, strings.Join(routes, ", "))}
+	}
+	route, err := pinnedRoute(ctx, routeOption{Harness: resolutions[0].Route.Harness, Model: resolutions[0].Route.Model}, registry, "--model")
 	if err != nil {
 		return dispatchTarget{}, err
 	}
 
-	return dispatchTarget{Route: &route}, nil
+	return dispatchTarget{Route: &route, resolutions: resolutions}, nil
 }
 
 func selectTier(supplied parsedOption, reply bool, configuration config.Config) (string, error) {
@@ -350,7 +386,7 @@ func startProgress(name string, stderr io.Writer) func() {
 	}
 }
 
-func report(response dispatch.Response, asJSON bool, stdout io.Writer, stderr io.Writer) (int, error) {
+func report(response dispatch.Response, asJSON bool, stdout io.Writer, stderr io.Writer, resolution *modeltarget.Resolution) (int, error) {
 	projected := projectResult(response, response.RoutedBecause)
 	if asJSON {
 		encoded, err := json.MarshalIndent(projected, "", "  ")
@@ -361,6 +397,11 @@ func report(response dispatch.Response, asJSON bool, stdout io.Writer, stderr io
 			return exitFailed, err
 		}
 	} else {
+		if resolution != nil {
+			if _, err := fmt.Fprintf(stdout, "route: %s%s\n", resolution.Route.String(), resolutionNote(*resolution)); err != nil {
+				return exitFailed, err
+			}
+		}
 		if projected.Output != nil && *projected.Output != "" {
 			if _, err := fmt.Fprint(stdout, strings.TrimRight(*projected.Output, "\n")+"\n"); err != nil {
 				return exitFailed, err
@@ -391,6 +432,25 @@ func report(response dispatch.Response, asJSON bool, stdout io.Writer, stderr io
 	}
 
 	return exitFailed, nil
+}
+
+func resolutionFor(response dispatch.Response, resolutions []modeltarget.Resolution) *modeltarget.Resolution {
+	route := config.Route{Harness: response.Provider, Model: response.Model}.String()
+	for index := range resolutions {
+		if resolutions[index].Route.String() == route {
+			return &resolutions[index]
+		}
+	}
+
+	return nil
+}
+
+func resolutionNote(resolution modeltarget.Resolution) string {
+	if resolution.LatestSource == "" {
+		return ""
+	}
+
+	return fmt.Sprintf(" (latest; %s)", resolution.LatestSource)
 }
 
 func projectResult(response dispatch.Response, routedBecause *string) result {

@@ -84,29 +84,22 @@ func TestParseArgumentsTerminatesFlagsAndAttachesFallback(t *testing.T) {
 	}
 }
 
-func TestParseArgumentsAcceptsModelWithAnOptionalModel(t *testing.T) {
+func TestParseArgumentsPreservesModelTargetsForConfigurationResolution(t *testing.T) {
 	tests := []struct {
 		name      string
 		arguments []string
-		want      routeOption
-		wantErr   bool
+		want      string
 	}{
-		{name: "bare harness", arguments: []string{"--model", "cline", "prompt"}, want: routeOption{Harness: "cline"}},
-		{name: "harness and model", arguments: []string{"--model", "grok/grok-4.5", "prompt"}, want: routeOption{Harness: "grok", Model: stringPointer("grok-4.5")}},
-		{name: "trailing slash", arguments: []string{"--model", "cline/", "prompt"}, wantErr: true},
-		{name: "multiple slashes", arguments: []string{"--model", "a/b/c", "prompt"}, wantErr: true},
-		{name: "empty harness", arguments: []string{"--model", "/model", "prompt"}, wantErr: true},
+		{name: "bare harness", arguments: []string{"--model", "cline", "prompt"}, want: "cline"},
+		{name: "harness and model", arguments: []string{"--model", "grok/grok-4.5", "prompt"}, want: "grok/grok-4.5"},
+		{name: "latest", arguments: []string{"--model", "latest", "prompt"}, want: "latest"},
+		{name: "comma list", arguments: []string{"--model", "codex/latest,opus-5.5", "prompt"}, want: "codex/latest,opus-5.5"},
+		{name: "model with slashes", arguments: []string{"--model", "cline/cline-pass/deepseek-v4-pro", "prompt"}, want: "cline/cline-pass/deepseek-v4-pro"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			values, _, err := parseArguments(test.arguments)
-			if test.wantErr {
-				if err == nil {
-					t.Fatalf("parseArguments(%q) accepted an invalid --model value", test.arguments)
-				}
-				return
-			}
-			if err != nil || values.Model == nil || values.Model.Harness != test.want.Harness || !equalStrings(values.Model.Model, test.want.Model) {
+			if err != nil || values.Model == nil || values.Model.Target != test.want {
 				t.Fatalf("parseArguments(%q) = %#v, %v; want %#v, nil", test.arguments, values.Model, err, test.want)
 			}
 		})

@@ -302,6 +302,25 @@ func TestEachMutationRejectsUnsupportedModelsWithoutWriting(t *testing.T) {
 	}
 }
 
+func TestMutationValidatesProjectLatestOverridesWithoutWriting(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, ConfigFileName)
+	contents := []byte(`{"version":1,"latest":{"grok":"grok-unknown"},"tiers":{"reviewer":{"routes":[{"harness":"codex","model":"latest"}]}}}`)
+	writeConfiguration(t, path, contents)
+
+	err := AddTier(context.Background(), path, testHarnesses, Tier{Name: "writer", Routes: []Route{{Harness: "codex", Model: testStringPointer("latest")}}})
+	if err == nil || !strings.Contains(err.Error(), "model grok/grok-unknown is invalid: test probe rejected the model") {
+		t.Fatalf("AddTier() error = %v, want invalid project latest override", err)
+	}
+	after, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatalf("ReadFile(%q) returned unexpected error: %v", path, readErr)
+	}
+	if string(after) != string(contents) {
+		t.Fatalf("AddTier() changed configuration after validation failure:\n%s", after)
+	}
+}
+
 func assertWrittenJSONShape(t *testing.T, contents []byte) {
 	t.Helper()
 

@@ -93,6 +93,7 @@ func SetDefaultTier(ctx context.Context, configPath string, harnesses Harnesses,
 type writableProjectConfigFile struct {
 	Version     int                    `json:"version"`
 	DefaultTier string                 `json:"defaultTier,omitempty"`
+	Latest      map[string]string      `json:"latest,omitempty"`
 	Tiers       map[string]projectTier `json:"tiers"`
 }
 
@@ -213,6 +214,7 @@ func marshalProjectConfig(configuration Config) ([]byte, error) {
 	contents, err := json.MarshalIndent(writableProjectConfigFile{
 		Version:     configuration.Version,
 		DefaultTier: configuration.DefaultTier,
+		Latest:      configuration.Latest,
 		Tiers:       tiers,
 	}, "", "  ")
 	if err != nil {

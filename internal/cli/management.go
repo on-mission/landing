@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/on-mission/landing/internal/config"
@@ -131,6 +133,7 @@ func managementOptions(values options, selected command) error {
 type configurationReport struct {
 	Source      configurationSource `json:"source"`
 	DefaultTier string              `json:"defaultTier"`
+	Latest      map[string]string   `json:"latest,omitempty"`
 	Tiers       []tierReport        `json:"tiers"`
 }
 
@@ -167,6 +170,13 @@ func reportConfiguration(configuration config.Config, asJSON bool, stdout io.Wri
 	}
 	if _, err := fmt.Fprintf(stdout, "source: %s\nsearched: %s to %s\ndefault tier: %s\n", report.Source.Path, report.Source.SearchedFrom, report.Source.SearchedTo, defaultTierText(report.DefaultTier)); err != nil {
 		return exitFailed, err
+	}
+	if len(report.Latest) != 0 {
+		for _, harnessID := range slices.Sorted(maps.Keys(report.Latest)) {
+			if _, err := fmt.Fprintf(stdout, "latest %s: %s\n", harnessID, report.Latest[harnessID]); err != nil {
+				return exitFailed, err
+			}
+		}
 	}
 	return writeTiers(report.Tiers, stdout)
 }
@@ -236,7 +246,7 @@ func projectConfiguration(configuration config.Config) configurationReport {
 		tiers = append(tiers, tierReport{Name: tier.Name, Origin: tier.Origin, Description: tier.Description, Routes: routes})
 	}
 
-	return configurationReport{Source: configurationSource{Path: configuration.Source.Path, SearchedFrom: configuration.Source.SearchedFrom, SearchedTo: configuration.Source.SearchedTo}, DefaultTier: configuration.DefaultTier, Tiers: tiers}
+	return configurationReport{Source: configurationSource{Path: configuration.Source.Path, SearchedFrom: configuration.Source.SearchedFrom, SearchedTo: configuration.Source.SearchedTo}, DefaultTier: configuration.DefaultTier, Latest: maps.Clone(configuration.Latest), Tiers: tiers}
 }
 
 func initializeConfiguration(ctx context.Context, invocationDir string, stdout io.Writer) (int, error) {
@@ -273,6 +283,7 @@ func initializeConfiguration(ctx context.Context, invocationDir string, stdout i
 type configurationFile struct {
 	Version     int                 `json:"version"`
 	DefaultTier string              `json:"defaultTier,omitempty"`
+	Latest      map[string]string   `json:"latest,omitempty"`
 	Tiers       map[string]tierFile `json:"tiers"`
 }
 
@@ -298,7 +309,7 @@ func projectConfigurationFile(configuration config.Config) configurationFile {
 		tiers[name] = tierFile{Description: tier.Description, Routes: routes}
 	}
 
-	return configurationFile{Version: configuration.Version, DefaultTier: configuration.DefaultTier, Tiers: tiers}
+	return configurationFile{Version: configuration.Version, DefaultTier: configuration.DefaultTier, Latest: configuration.Latest, Tiers: tiers}
 }
 
 func writeConfigurationFile(path string, contents []byte) error {
