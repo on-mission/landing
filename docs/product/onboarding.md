@@ -29,9 +29,9 @@ authentication readiness, their remaining capacity, and the models each can
 authoritatively enumerate or otherwise names as useful examples. It marks an
 example list as incomplete, so the agent does not mistake it for a closed
 provider catalog. If the agent supplies an unsupported harness, Landing fails
-clearly. An unknown model is rejected before writing only when its harness can
-authoritatively enumerate models; otherwise the harness reports any error when
-the route runs.
+clearly. [DEFERRED] A harness-qualified model Landing does not know is accepted and
+validated before Landing writes the policy; model lists aid inference and never
+refuse a model.
 
 Configuration-management requests accept the complete policy an agent needs to
 express: route lists, their preference order, and detailed tier descriptions.
@@ -91,12 +91,13 @@ a route, model, harness, or tier.
 ### 4. Validate and apply
 
 Landing validates the complete requested policy before writing it. A request
-that names an unavailable harness, or a model outside an authoritative catalog,
-fails clearly. A model from an incomplete catalog remains a valid policy choice
-and the harness reports any rejection when that route runs. Landing writes the
-project configuration inside `.landing/`. Agents discover the current policy
-from that project-owned context without Landing writing into unrelated
-instructions.
+that names an unavailable harness fails clearly. [DEFERRED] A model that
+validates as invalid or unverified also fails clearly; Landing accepts an
+unfamiliar harness-qualified model and uses live provider evidence or a minimal
+probe to validate it.
+Landing writes the project configuration inside `.landing/`. Agents discover
+the current policy from that project-owned context without Landing writing into
+unrelated instructions.
 
 ### 5. Report readiness
 

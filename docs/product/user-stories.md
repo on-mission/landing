@@ -110,6 +110,16 @@ machine-specific account state.
 
 I can see the resolved project configuration file that supplies the policy.
 
+### [DEFERRED] Set this project's current-model choice
+
+As a project owner, I want to override Landing's `latest` choice for one
+harness so that my project's policy uses the frontier model I consider right for
+that provider without redefining every other harness.
+
+Landing retains its shipped `latest` defaults for harnesses I do not override.
+I can use `latest` wherever I name a model, and Landing reports the concrete
+route and whether the choice is a project override or Landing default.
+
 ## Create and manage personas
 
 ### Create a reusable persona
@@ -166,18 +176,20 @@ responsibility for reviewing and integrating the result. These responsibilities
 do not assume that one agent is larger, smaller, more senior, or tied to a
 particular model.
 
-### Name the route for this work
+### [DEFERRED] Name the model target for this work
 
-As a user or lead agent, I want to name the harness and model for one request so
-that work whose point is a particular model runs on it.
+As a user or lead agent, I want to name the model target for one request so that
+work whose point is a particular model runs on it.
 
-Landing runs the named route without ranking it against alternatives and without
-falling back, because substituting another model would discard the reason I
-named this one. I can name any route my machine can reach, whether or not my
-project's tiers use it, and I do not have to add a tier to make one request. If
-the route cannot run the work, I get a failure that says so. When the harness
-can enumerate models, Landing catches an unknown name before work starts;
-otherwise the harness remains the authority for that decision.
+I can name a harness and model, a known model whose harness Landing can infer,
+or a harness's `latest`. Landing accepts a harness-qualified model it has not
+seen; model lists help with inference but never refuse it. It validates the
+named model before work starts and reports `valid`, `invalid`, or `unverified`.
+An unverified model does not dispatch. Landing runs a valid named route without
+ranking it against alternatives or falling back, because substituting another
+model would discard the reason I named this one. I can name any route my machine
+can reach, whether or not my project's tiers use it, and I do not have to add a
+tier to make one request.
 
 ### See the routes I can name
 
@@ -241,6 +253,20 @@ of the route selected for its work. Naming several personas for ordinary work
 does not convene a meeting. A meeting requires an arbiter and at least two
 participants besides it.
 
+### [DEFERRED] Hear one perspective from several models
+
+As a user, I want to seat a persona on several routes in one meeting so that I
+can compare independent answers without manually convening the same perspective
+several times.
+
+A seat is one persona on one route. A cast can resolve a model target into
+several routes, including `latest`, a tier's primary routes, or a comma-separated
+combination; duplicate routes become one seat. Landing validates every distinct
+seat and arbiter route before it dispatches any seat. An invalid or unverified
+route stops the meeting before participant work is spent. A seat that later
+fails is reported rather than dropped, and the meeting continues with the
+positions that answer when at least two seats answer.
+
 ### Name an arbiter with a perspective
 
 As a user, I want to name one persona as arbiter so that the meeting has a
@@ -248,7 +274,9 @@ defined perspective to read the positions and identify genuine disagreement.
 
 I can also seat the arbiter as a participant. Landing runs those responsibilities
 in separate contexts, so the arbiter can advance its own position without its
-participant instance influencing its judgment.
+participant instance influencing its judgment. [DEFERRED] I can cast the
+arbiter to one specific route, but not to a target that resolves to several
+routes.
 
 ### Receive one independent round
 
@@ -283,12 +311,12 @@ disagreement, and retain unresolved positions.
 
 Landing uses the meeting's tier to route the arbiter and every participant I do
 not cast through the ordinary availability-driven policy. I can cast a
-particular participant to any route Landing can reach through an installed
-supported harness, even when that route is outside the meeting's tier. Landing
-validates the harness and model, and the route belongs to this meeting rather
-than to the persona. A meeting does not restrict participants to reading: they
-can investigate, read, and run commands as ordinary Landing work can. Landing
-does not cap what the meeting spends.
+particular participant to any model target Landing can resolve through an
+installed supported harness, even when its routes are outside the meeting's
+tier. The cast belongs to this meeting rather than to the persona. A meeting
+does not restrict participants to reading: they can investigate, read, and run
+commands as ordinary Landing work can. Landing does not cap what the meeting
+spends.
 
 ## Stay in control
 

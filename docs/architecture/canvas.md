@@ -12,16 +12,20 @@ harnesses available in that user's environment.
 
 ```text
 Harness adapters -> Route discovery -> Configuration authoring -> Configuration resolver -> Tier policy -> Router -> Execution runtime -> Harness adapters
-Direct configuration ----------------> Configuration authoring
+Direct configuration ----------------> Configuration resolver
+Configuration authoring -- concrete models --> Model target resolution and validation
+Model target resolution and validation -- validation results --> Configuration authoring
 Configuration resolver -------------> Agent guidance
 Configuration resolver -------------> Persona library -> Execution runtime
+Caller model target + Configuration resolver + Route discovery --> Model target resolution and validation -> Execution runtime
 Persona request --------------------> Persona library
 Meeting request --------------------> Meeting round convener -> Persona library
-Meeting round convener -- parallel participant dispatches --> Execution runtime
+Meeting round convener -- parallel seat dispatches --> Execution runtime
 Execution runtime -- participant positions --> Meeting round convener
 Meeting round convener -- arbiter reading --> Execution runtime
 Execution runtime -- arbiter reading --> Meeting round convener
-Execution runtime ------------------> Local state
+Model target resolution and validation --------------------------> Local state
+Execution runtime ----------------------------------------------> Local state
 ```
 
 ## Components
@@ -29,25 +33,31 @@ Execution runtime ------------------> Local state
 ### Route discovery
 
 Reports the harnesses Landing can route through on this machine, their
-authentication readiness, their known remaining capacity, and their reachable
-models. It reports only supported, routable choices so an agent can compose a
-valid tier without inferring provider capabilities that Landing cannot use.
+authentication readiness, their known remaining capacity, and their model
+hints. Hints identify known models, short names, and a harness's shipped
+`latest` default; they help callers discover and resolve routes, but never
+prove that another model cannot run.
 
 ### Configuration authoring
 
-Accepts a complete caller-supplied policy and validates every named harness,
-model, and route against Route discovery before it writes project configuration
-or generated agent guidance. It treats agent-supplied detail as intentional
-rather than requiring abbreviated input. Direct configuration remains a
-supported input to Configuration resolver and receives validation when read.
+Accepts a complete caller-supplied policy and validates its configuration shape
+and named harnesses before it writes project configuration or generated agent
+guidance. It supplies every concrete tier-route model and project `latest`
+override to Model target resolution and validation, and refuses to write when
+either is `invalid` or `unverified`. A tier route written as `latest` is not a
+concrete model at write time; it resolves when the route is used. It treats
+agent-supplied detail as intentional rather than requiring abbreviated input.
 
 ### Configuration resolver
 
 Reads the nearest applicable project configuration by searching upward from the
 invocation directory, then combines it with built-in defaults into one validated
 view. Its policy precedence is exactly built-in defaults, then the project
-configuration. Project configuration lives at `.landing/config.json`; all
-project-owned Landing material lives beneath that same `.landing/` directory.
+configuration. The project owns its tiers and optional per-harness `latest`
+overrides; Landing owns the fallback `latest` defaults. A tier route may name
+`latest`, which becomes a concrete route only during target resolution. Project
+configuration lives at `.landing/config.json`; all project-owned Landing
+material lives beneath that same `.landing/` directory.
 Absent project configuration is a terminal error that identifies the required
 configuration and directories searched. Without project configuration, Landing
 has no project tiers to route within: built-in defaults describe a sensible
@@ -55,6 +65,37 @@ starting grouping, not this project's grouping, and Landing does not invent
 that grouping or spend capacity on the guess. Diagnostics identify the resolved
 configuration, without carrying provider credentials into the project. It
 validates that a declared default tier names a configured tier.
+
+Direct configuration receives shape validation when Configuration resolver
+reads it, without a model probe. Its concrete models validate when their routes
+are used.
+
+### Model target resolution and validation [DEFERRED]
+
+Turns every caller-written model target, and every concrete model Configuration
+authoring supplies, into one or more concrete routes before it is accepted for
+use. It resolves an explicit harness/model to that route; an explicit
+harness/latest to that harness's latest; `latest` to every harness with a
+defined latest; a tier to its primary routes; a comma list to the deduplicated
+union of its targets; and a bare model through exactly one adapter's hints.
+Reserve routes are not tier targets. It consults project tiers, project
+`latest` overrides, adapter-shipped `latest` defaults, and adapter hints. A
+bare word matching more than one namespace is an error rather than a guess; an
+unknown bare model also requires an explicit harness. A target that must select
+one route, including ordinary work and an arbiter, fails if it resolves to more
+than one.
+
+Validates every concrete route through the adapter that owns its harness. The
+adapter returns `valid`, `invalid`, or `unverified` with its evidence. An
+adapter uses its live model listing when it has one; otherwise it minimally
+probes exactly the selected model. A provider's definitive rejection is
+`invalid`; a timeout, rate limit, or other inconclusive failure is
+`unverified`, and neither result dispatches work. Each adapter recognizes its
+own unknown-model rejection, including the nonzero rejection behavior observed
+for Claude, Codex, Grok, and Cline, so a successful probe proves the selected
+model was not silently substituted. Only `valid` results are retained, per
+harness and model, for one day. Model validation covers direct work, casts,
+arbiters, tier routes, and project `latest` overrides.
 
 ### Persona library
 
@@ -86,22 +127,31 @@ retry and honest thread continuation. It is not a durable background queue.
 
 ### Meeting round convener
 
-Owns one explicitly requested meeting round. It resolves the caller-selected
-participants and arbiter, starts every participant in parallel with clean
-contexts, then gives their positions to the arbiter for a separate reading. It
-returns every participant position and the arbiter's prose reading. It does not
-interpret a position, decide whether deliberation continues, or request a
-synthesis. The lead agent carries positions and the arbiter's flagged conflicts
-into any further round verbatim, decides when deliberation is finished, and
-requests synthesis as ordinary work. This boundary remains beside Execution
-runtime because the convener coordinates the fixed two-stage round while the
-runtime owns each dispatch and its terminal result.
+Owns one explicitly requested meeting round. [DEFERRED] Its seat and preflight
+contract treats a seat—one persona on one concrete route—as its unit of
+dispatch, reporting, and handoff to the arbiter; the same persona may occupy
+several seats. It resolves the caller-selected participants, seats, and
+arbiter, validates every distinct seat and arbiter route in parallel before
+dispatching any seat, then starts all seats in parallel with clean contexts. It
+gives the arbiter every completed position verbatim for a separate reading and
+returns every seat outcome and the arbiter's prose reading. A harness that
+becomes unavailable after validation is a visible failed seat; the round
+proceeds when at least two seats answer. It does not interpret a position,
+decide whether deliberation continues, or request a synthesis. The lead agent
+carries positions and the arbiter's flagged conflicts into any further round
+verbatim, decides when deliberation is finished, and requests synthesis as
+ordinary work. This boundary remains beside Execution runtime because the
+convener coordinates the fixed two-stage round while the runtime owns each
+dispatch and its terminal result.
 
 ### Harness adapters
 
 Translate the shared execution contract into supported harness behavior. They
 contain provider-specific authentication boundaries, requests, results,
-capacity interpretation, and failure classification.
+capacity interpretation, failure classification, model hints, and model
+validation evidence. Every adapter's model knowledge is advisory: it supports
+inference, short names, and `latest`, but no catalog refuses a model. The
+adapter alone recognizes its harness's definitive unknown-model rejection.
 
 ### Agent guidance
 
@@ -112,7 +162,9 @@ written only inside bounded owned regions.
 ### Local state
 
 Retains only operational facts needed for diagnosis, temporary route cooling,
-and continuation identity. Provider credentials remain owned by their official
+continuation identity, and one-day successful model validations. A thread
+records the concrete route that answered, so continuation stays on that route
+after `latest` changes. Provider credentials remain owned by their official
 tooling.
 
 ## Contracts and invariants
@@ -138,12 +190,12 @@ tooling.
   Participants are isolated from one another until their positions return.
 - An arbiter who is also a participant runs as two separate instances with
   separate contexts. Neither instance receives the other instance's work.
-- A meeting round selects one tier for the participant routes Landing chooses
-  and for the arbiter route. Those routes come from the tier's ordinary policy.
-- A caller-selected route for a participant may be outside the meeting tier but
-  must name a supported installed harness and a model reachable through it. It
-  is scoped to that round; it does not become persona routing policy or affect
-  another round.
+- A meeting's seat belongs to that round, not to its persona. A caller-selected
+  seat route may be outside the meeting tier; it is scoped to that round and
+  does not become persona routing policy or affect another round.
+- A meeting validates every distinct concrete seat and arbiter route in
+  parallel before it dispatches a seat. `invalid` and `unverified` routes stop
+  the round before work spends capacity.
 - Participant dispatches retain the ordinary capabilities of Execution runtime;
   a meeting round does not restrict them to reading.
 - The arbiter receives every participant position verbatim. Landing never
@@ -160,6 +212,8 @@ tooling.
 - Capacity checks are read-only and unknown capacity remains explicitly unknown.
 - Retry is bounded and preserves the original execution failure.
 - A continuation stays on the route that owns its context.
+- A continuation records and uses its concrete route, never a moving `latest`
+  target.
 - Generated agent guidance and resolved tier policy cannot evolve independently.
 - Configuration resolution has exactly two policy layers: built-in defaults,
   then the nearest applicable project configuration.
@@ -168,11 +222,19 @@ tooling.
   project.
 - Configuration is one project-owned policy surface. It supports direct
   authoring and validated authoring through Landing.
+- Configuration authoring refuses to write a concrete model that is `invalid`
+  or `unverified`; direct configuration read validates shape without probing and
+  defers concrete-model validation until its route is used.
 - Absent configuration terminates dispatch because Landing has no project tiers
   to route within. Built-in defaults are a sensible starting grouping, not a
   substitute for the project's grouping, so Landing does not spend capacity on
   an invented grouping.
 - Configuration never stores raw provider credentials.
+- Project configuration may override `latest` per harness, and tier routes may
+  name `latest`; Landing supplies defaults for harnesses without an override.
+- Model hints are never a model-acceptance gate. Every concrete model is
+  validated by its owning adapter before Configuration authoring writes it or
+  work runs it, and only successful validations are cached.
 - Every emitted message concisely describes observed state rather than
   prescribing recovery.
 - Every persistent write has a visible owner and a safe replacement boundary.

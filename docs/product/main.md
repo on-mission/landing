@@ -105,6 +105,8 @@ asks Landing for supported installed harnesses, authentication readiness,
 remaining capacity, and known model options, then asks Landing to write the
 complete validated configuration. Landing marks a non-exhaustive model list so
 an agent can name a newly available model without waiting for Landing to update.
+Known models are hints for naming and inference, never a closed list that
+refuses a harness-qualified model.
 
 Direct configuration authoring remains supported and Landing validates it when
 read. Agent-driven configuration makes the configuration Landing writes
@@ -133,8 +135,11 @@ It is not a persona or profession. A configuration can identify one tier as the
 default for unnamed work. Without a default, the caller names a configured tier;
 Landing does not choose one.
 
-When the model itself is the request, a caller names the route instead of a
-tier, and Landing reports the routes available to name. This stays the
+When the model itself is the request, a caller names a model target instead of
+a tier, and Landing reports the routes available to name. [DEFERRED] A target
+can name a route, an inferred known model, a harness's `latest`, `latest` across
+harnesses, a tier's primary routes, or a comma-separated combination. Ordinary
+work needs one resolved route; meetings can use several. This stays the
 exception: a tier is what lets Landing answer to availability.
 
 ### Invoke work
@@ -183,21 +188,30 @@ hierarchy based on model size, cost, or status.
 
 For a consequential question, a lead agent can convene a meeting: one round of
 a deliberation protocol. It names an arbiter and at least two participants
-besides it. Landing gives every participant a clean, independent context with
-the question and its own material, then returns every position and the
-arbiter's reading of genuine conflict to the lead agent. An arbiter is a persona
-with a perspective, not a neutral position, and may also participate through a
-separate instance and context.
+besides it. [DEFERRED] A seat is one persona on one route, so a persona may
+hold several seats and offer the same perspective through several models. A cast
+resolves a model target into seats; the arbiter may be cast to exactly one route.
+Landing gives every participant seat a clean, independent context with the
+question and its own material, then returns every position and the arbiter's
+reading of genuine conflict to the lead agent. An arbiter is a persona with a
+perspective, not a neutral position, and may also participate through a separate
+instance and context.
+
+[DEFERRED] Landing validates every distinct participant and arbiter route before it
+dispatches a seat. An invalid or unverified route stops the meeting before it
+spends on participant work. A seat that becomes unavailable after validation is
+reported, never dropped; the meeting continues with the positions that answer
+when at least two seats answer.
 
 The lead agent decides whether to convene another round, carrying prior
 positions and the arbiter's reading verbatim, or to ask the arbiter for a
 synthesis as ordinary work. This preserves judgment where it belongs and keeps
 Landing from manufacturing consensus or reducing disagreement to a structured
 verdict. A meeting uses one tier and ordinary availability-driven routing, with
-an optional route choice for a particular participant from that tier that
-belongs to the meeting alone. Participants retain ordinary work capabilities.
-Meetings use several times the capacity of one dispatch, and Landing does not
-cap what they spend.
+an optional model target for a particular participant or the arbiter that
+belongs to the meeting alone and can name a route outside the tier. Participants
+retain ordinary work capabilities. Meetings use several times the capacity of
+one dispatch, and Landing does not cap what they spend.
 
 A meeting is requested explicitly. Naming several personas for ordinary work
 does not create one. Meetings use several times the capacity of one dispatch
@@ -208,9 +222,16 @@ and return a different kind of result, so they remain an optional workflow.
 Landing chooses among the routes in the requested tier using known capability,
 availability, preference, and failure state. Quality, latency, cost, and context
 requirements are valid policy inputs as the product can measure them honestly.
+[DEFERRED] `latest` names Landing's current frontier default for each harness with one;
+projects can override that choice per harness, and the resolved route is
+reported. Model hints help Landing resolve known short names, but do not refuse
+an unfamiliar harness-qualified model.
 
-A request that names its own route skips this selection. Landing runs that route
-or reports why it cannot, and never substitutes another.
+A request that names its own target skips this selection. [DEFERRED] Landing validates each
+resolved route through live provider evidence or a minimal probe, then runs it
+or reports it as valid, invalid, or unverified. An unverified route does not
+dispatch, and Landing never substitutes another. The small validation probe is
+the confined exception to Landing's non-spending capacity checks.
 
 ### Bounded recovery
 
@@ -269,6 +290,8 @@ hosted control plane.
 - Keep policy and agent context aligned.
 - Make decisions observable without making users operate the router.
 - Degrade honestly when capability or capacity is unknown.
+- Accept new model names without waiting for a catalog update, and verify them
+  before work runs.
 - Treat every message as model-readable context: state what Landing observed
   concisely and descriptively without prescribing a recovery.
 - Preserve meaningful disagreement; do not manufacture consensus.
