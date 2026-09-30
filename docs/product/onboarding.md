@@ -157,9 +157,10 @@ the same work as though it were the lead agent.
 root. It does not create either file, and it does not write harness settings.
 Running it again replaces only the section it previously wrote.
 
-After installation, a chat in the project backgrounds `landing messages
-monitor` with the harness's own backgrounding, as the standing section
-directs. The detailed experience is defined in [Messages](messages.md).
+After installation, a chat in the project backgrounds
+`landing messages monitor --as <name>` with the harness's own backgrounding, as
+the standing section directs. The detailed experience is defined in
+[Messages](messages.md).
 
 ## Success standard
 

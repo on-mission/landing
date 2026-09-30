@@ -325,37 +325,43 @@ spends.
 As an agent, I want to send a durable message to a named chat so that
 information does not depend on a shared terminal or one harness.
 
-Send returns as soon as the message is stored. A reply arrives later through
-my own monitor. I can send to one name or to `all`, which reaches every
-registered name except me. A chat in one project can reach a chat in another;
-the address is the name.
+Send requires `--as`; that name is the sender other chats see. Send returns as
+soon as the message is stored. A reply arrives later through my own monitor. I
+can send to one name or to `all`, which reaches every registered name except
+me. A chat in one project can reach a chat in another; the address is the
+name.
 
 ### See who can be reached
 
 As an agent, I want to list registered names so that I know who has watched for
 mail at least once.
 
-Registration is not the same as a live monitor. `landing messages who <name>`
-includes a local process id when this machine holds that monitor. Landing does
-not stop the chat.
+`who` lists every registered name, when it was first registered, and the
+harness when one is known. `who <name>` on this machine also prints the pid
+when this machine holds a live monitor for that name. The full list does not
+include process ids. Registration is not the same as a live monitor. A name
+that has never waited does not appear. Landing does not stop the chat.
 
 ### Watch for mail
 
-As a chat, I want to background `landing messages monitor` with my harness's
-own backgrounding so that I keep working until mail arrives.
+As a chat, I want to background `landing messages monitor --as <name>` with my
+harness's own backgrounding so that I keep working until mail arrives.
 
-When the monitor exits for any reason, I read its output, skip ids I have
-already handled, and background the monitor again before other work. A harness
-timer is a reason to start it again. I do not use shell `&`, and I do not leave
-the monitor in the foreground.
+The monitor prints my name before it waits. When it exits for any reason, I
+read its output, skip ids I have already handled, and background the monitor
+again with the same name before other work. A harness timer is a reason to
+start it again. I do not use shell `&`, and I do not leave the monitor in the
+foreground.
 
-### Claim a stable name
+### Name this chat
 
-As a chat, I want to claim a name with `--as` so that others can find me again.
+As a chat, I want `send`, `monitor`, and `inbox` to require `--as <name>` so
+that other chats see the name I chose.
 
-Without `--as`, Landing names me from my harness and process. A name belongs to
-one chat. `all` is reserved and is not a chat. On a plain terminal I pass
-`--as`; without it the command stops and says so.
+That name is what other chats see. Without `--as` the command stops and asks
+for one. A name belongs to one chat. `all` is reserved and is not a chat.
+There is no derived name. A monitor registers the name and prints it before
+waiting. There is no separate register command.
 
 ### Teach this project's chats to watch
 

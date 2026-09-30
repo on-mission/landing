@@ -48,6 +48,9 @@ type waitRequest struct {
 	// Block is omitted for a monitor. Inbox sets it to false. A bool would
 	// drop false under omitempty, so this stays a pointer.
 	Block *bool `json:"block,omitempty"`
+	// Harness is set only for a blocking wait, and only when the walk found
+	// one. omitempty drops it when the walk found none.
+	Harness string `json:"harness,omitempty"`
 }
 
 type waitResult struct {
@@ -69,8 +72,9 @@ type listRequest struct {
 }
 
 type listedRecipient struct {
-	Name  string `json:"name"`
-	Since string `json:"since"`
+	Name    string `json:"name"`
+	Since   string `json:"since"`
+	Harness string `json:"harness,omitempty"`
 }
 
 type listResult struct {
@@ -153,9 +157,11 @@ func (provider messageProvider) send(ctx context.Context, message wireMessage) e
 	return nil
 }
 
-func (provider messageProvider) wait(ctx context.Context, recipient string, blocking bool) ([]wireMessage, error) {
+func (provider messageProvider) wait(ctx context.Context, recipient string, blocking bool, harness string) ([]wireMessage, error) {
 	request := waitRequest{Op: "wait", Recipient: recipient}
-	if !blocking {
+	if blocking {
+		request.Harness = harness
+	} else {
 		value := false
 		request.Block = &value
 	}

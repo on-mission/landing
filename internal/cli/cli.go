@@ -84,7 +84,7 @@ OPTIONS
   --name <name>                 Tier or persona name for add, update, remove, or show.
   --to <name>                   Message recipient.
   --message <text>              Message body.
-  --as <name>                   Name for this chat.
+  --as <name>                   Required name for messages send, monitor, and inbox.
   --default                     Mark an added or updated tier as default.
   --json                        JSON output for commands that report data.
   --help, -h                    Help.
@@ -130,10 +130,10 @@ OPTIONS
 const messagesHelp = `landing messages — send a message, or watch for one.
 
 USAGE
-  landing messages send --to <name> --message <text> [--as <name>]
-  landing messages monitor [--as <name>]
+  landing messages send --as <name> --to <name> --message <text>
+  landing messages monitor --as <name>
   landing messages who [<name>]
-  landing messages inbox [--as <name>]
+  landing messages inbox --as <name>
   landing messages install
   landing messages uninstall
 
@@ -145,7 +145,7 @@ at the project root.
 OPTIONS
   --to <name>                   Recipient. all is forwarded unchanged.
   --message <text>              Message body.
-  --as <name>                   Name for this chat.
+  --as <name>                   Required name for send, monitor, and inbox.
   --json                        JSON output for send and monitor.
   --help, -h                    Help.
 `

@@ -41,8 +41,8 @@ machine shares one bus.
 files, and it does not write harness settings. Whether to add that section is
 the user's decision.
 
-A chat backgrounds `landing messages monitor` with the harness's own
-backgrounding. When that command exits, for any reason, the chat reads its
+A chat backgrounds `landing messages monitor --as <name>` with the harness's
+own backgrounding. When that command exits, for any reason, the chat reads its
 output, acts on each message, skips an id it has already handled, and
 backgrounds the monitor again before other work. Send returns as soon as the
 message is stored. A reply arrives later through the sender's own monitor.

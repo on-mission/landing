@@ -16,6 +16,7 @@ import (
 type chatSession struct {
 	name    string
 	session string
+	harness string
 }
 
 type harnessAncestor struct {
@@ -112,6 +113,14 @@ func runMessagesMonitor(ctx context.Context, values options, positionals []strin
 	if err := claimMonitor(chat.session, chat.name); err != nil {
 		return exitFailed, err
 	}
+	if !values.JSON {
+		if _, err := fmt.Fprintf(stdout, "name: %s\n", chat.name); err != nil {
+			return exitFailed, err
+		}
+		if err := flushWriter(stdout); err != nil {
+			return exitFailed, err
+		}
+	}
 	if err := retryMonitorCommand(ctx, func() error {
 		return acknowledgePresented(ctx, provider, chat.session)
 	}); err != nil {
@@ -120,7 +129,7 @@ func runMessagesMonitor(ctx context.Context, values options, positionals []strin
 	var messages []wireMessage
 	if err := retryMonitorCommand(ctx, func() error {
 		var err error
-		messages, err = provider.wait(ctx, chat.name, true)
+		messages, err = provider.wait(ctx, chat.name, true, chat.harness)
 		return err
 	}); err != nil {
 		return exitFailed, err
@@ -149,41 +158,59 @@ func runMessagesWho(ctx context.Context, values options, positionals []string, s
 	}
 	if len(positionals) == 0 {
 		for _, recipient := range recipients {
-			if _, err := fmt.Fprintln(stdout, recipient.Name); err != nil {
+			if err := writeListedRecipient(stdout, recipient, nil); err != nil {
 				return exitFailed, err
 			}
 		}
 		return exitOK, nil
 	}
 	name := positionals[0]
-	var found *listedRecipient
-	for index := range recipients {
-		if recipients[index].Name == name {
-			found = &recipients[index]
+	var found listedRecipient
+	var ok bool
+	for _, recipient := range recipients {
+		if recipient.Name == name {
+			found = recipient
+			ok = true
 			break
 		}
 	}
-	if found == nil {
+	if !ok {
 		return exitUsage, &usageError{message: fmt.Sprintf("name %q is not registered", name)}
-	}
-	since, err := displayProviderTime(found.Since)
-	if err != nil {
-		return exitFailed, err
-	}
-	if _, err := fmt.Fprintf(stdout, "%s\n  registered: %s\n", found.Name, since); err != nil {
-		return exitFailed, err
 	}
 	pids, err := liveMonitorPIDs(name)
 	if err != nil {
 		return exitFailed, err
 	}
-	for _, pid := range pids {
-		if _, err := fmt.Fprintf(stdout, "  pid: %d\n", pid); err != nil {
-			return exitFailed, err
-		}
+	if err := writeListedRecipient(stdout, found, pids); err != nil {
+		return exitFailed, err
 	}
 
 	return exitOK, nil
+}
+
+func writeListedRecipient(stdout io.Writer, recipient listedRecipient, pids []int) error {
+	if _, err := fmt.Fprintln(stdout, recipient.Name); err != nil {
+		return err
+	}
+	since, err := displayProviderTime(recipient.Since)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdout, "  registered: %s\n", since); err != nil {
+		return err
+	}
+	if recipient.Harness != "" {
+		if _, err := fmt.Fprintf(stdout, "  harness: %s\n", recipient.Harness); err != nil {
+			return err
+		}
+	}
+	for _, pid := range pids {
+		if _, err := fmt.Fprintf(stdout, "  pid: %d\n", pid); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func runMessagesInbox(ctx context.Context, values options, positionals []string, stdout io.Writer) (int, error) {
@@ -201,7 +228,7 @@ func runMessagesInbox(ctx context.Context, values options, positionals []string,
 	if err != nil {
 		return exitFailed, err
 	}
-	messages, err := provider.wait(ctx, chat.name, false)
+	messages, err := provider.wait(ctx, chat.name, false, chat.harness)
 	if err != nil {
 		return exitFailed, err
 	}
@@ -243,28 +270,23 @@ func messageExit(err error) (int, error) {
 }
 
 func identifyChat(ctx context.Context, as parsedOption) (chatSession, error) {
-	if as.Set {
-		if err := validateChatName(as.Value); err != nil {
-			return chatSession{}, err
-		}
+	if !as.Set {
+		return chatSession{}, &usageError{message: "a name is required"}
+	}
+	if err := validateChatName(as.Value); err != nil {
+		return chatSession{}, err
 	}
 	ancestor, found, err := closestHarnessAncestor(ctx)
 	if err != nil {
 		return chatSession{}, err
 	}
-	if !found {
-		if !as.Set {
-			return chatSession{}, &usageError{message: "no harness parent and no --as"}
-		}
-
-		return chatSession{name: as.Value, session: as.Value}, nil
-	}
-	name := ancestor.id + "-" + strconv.Itoa(ancestor.pid)
-	if as.Set {
-		name = as.Value
+	chat := chatSession{name: as.Value, session: as.Value}
+	if found {
+		chat.session = strconv.Itoa(ancestor.pid)
+		chat.harness = ancestor.id
 	}
 
-	return chatSession{name: name, session: strconv.Itoa(ancestor.pid)}, nil
+	return chat, nil
 }
 
 func closestHarnessAncestor(ctx context.Context) (harnessAncestor, bool, error) {

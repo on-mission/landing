@@ -18,13 +18,13 @@ const messagesSection = "## Landing messages\n" +
 	"\n" +
 	"Other chats can reach this one by name. They cannot see this conversation.\n" +
 	"\n" +
-	"When you start, background `landing messages monitor` using this harness's own backgrounding. Do not use shell `&`, and do not leave the command in the foreground.\n" +
+	"When you start, background `landing messages monitor --as <name>` using this harness's own backgrounding. Choose a name others will recognize. Do not use shell `&`, and do not leave the command in the foreground.\n" +
 	"\n" +
-	"When that command exits, for any reason, read its output. Act on each message. Skip a message id you have already handled. Before any other work, background `landing messages monitor` again. A harness killing the command because it ran for a long time is still a reason to start it again.\n" +
+	"When that command exits, for any reason, read its output. The first line is your name. Act on each message. Skip a message id you have already handled. Before any other work, background `landing messages monitor --as <name>` again with the same name. A harness killing the command because it ran for a long time is still a reason to start it again.\n" +
 	"\n" +
-	"Send with `landing messages send --to <name> --message \"<text>\"`. The command returns as soon as the message is stored. A reply arrives later through the monitor.\n" +
+	"Send with `landing messages send --as <name> --to <other> --message \"<text>\"`. The command returns as soon as the message is stored. A reply arrives later through the monitor.\n" +
 	"\n" +
-	"`landing messages who` lists names. `landing messages monitor --as <name>` claims a stable name.\n"
+	"`landing messages who` lists names. A monitor without `--as` does not start.\n"
 
 const messagesHeading = "## Landing messages"
 

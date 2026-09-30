@@ -340,7 +340,7 @@ func TestSubcommandHelpIsSpecificToTheCommand(t *testing.T) {
 		"config init": {args: []string{"config", "init", "--help"}, want: "landing config init — create a project configuration"},
 		"tier add":    {args: []string{"tier", "add", "--help"}, want: "landing tier add — add a configured execution tier"},
 		"persona add": {args: []string{"persona", "add", "--help"}, want: "--instructions-file <path>"},
-		"messages":    {args: []string{"messages", "--help"}, want: "landing messages send --to <name> --message <text>"},
+		"messages":    {args: []string{"messages", "--help"}, want: "landing messages send --as <name> --to <name> --message <text>"},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {

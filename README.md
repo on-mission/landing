@@ -56,9 +56,10 @@ task + optional persona
 - **Convenes independent perspectives.** Meetings ask several personas the same
   question in clean contexts, then ask an arbiter persona to identify genuine
   conflicts.
-- **Lets chats reach one another by name.** A chat watches with
-  `landing messages monitor` and sends with `landing messages send`. Every
-  project on the machine shares the bus; the address is the name.
+- **Lets chats reach one another by name.** A chat names itself, watches with
+  `landing messages monitor --as <name>`, and sends with
+  `landing messages send --as <name>`. Every project on the machine shares the
+  bus; the address is the name.
 
 Landing runs locally as a single Go binary. Project policy and personas live in
 `.landing/` and can travel with the repository; personal authentication does
@@ -204,15 +205,15 @@ landing messages install
 ```
 
 That command does not create those files and does not write harness settings.
-A chat then backgrounds `landing messages monitor` with the harness's own
-backgrounding, reads the output when it exits, skips ids it has already
-handled, and backgrounds the monitor again before other work.
+A chat then backgrounds `landing messages monitor --as <name>` with the
+harness's own backgrounding, reads the output when it exits, skips ids it has
+already handled, and backgrounds the monitor again before other work.
 
 Inspect names and send a message:
 
 ```sh
 landing messages who
-landing messages send --to <name> --message "I changed the routing boundary; review before editing it."
+landing messages send --as <name> --to <name> --message "I changed the routing boundary; review before editing it."
 ```
 
 Send returns as soon as the message is stored. A reply arrives later through
@@ -230,7 +231,7 @@ landing model list
 landing tier list
 landing persona list
 landing messages who
-landing messages inbox
+landing messages inbox --as <name>
 ```
 
 Run `landing --help` for the full command surface and `landing <command> --help`
