@@ -150,21 +150,16 @@ The project-owned policy lets an agent discover:
 It also prevents a worker launched through Landing from recursively dispatching
 the same work as though it were the lead agent.
 
-## Communication setup
+## Messages setup
 
-Without harness hooks, sessions do not register and no message reaches a running
-agent. An agent can still read its own inbox and history, and dispatched threads
-still register because those paths do not use hooks. Installing hooks writes to
-harness project-configuration files, so Landing reports the files before it
-writes them and again when it removes them. Those files remain owned by their
-harnesses; Landing does not otherwise take ownership of them.
+`landing messages install` writes the standing messages section into
+`AGENTS.md` and `CLAUDE.md` when those files already exist at the project
+root. It does not create either file, and it does not write harness settings.
+Running it again replaces only the section it previously wrote.
 
-After installation, setup adds a short communication note to the project's
-existing agent guidance without disturbing surrounding instructions. It tells an
-agent that other agents work in the project but cannot see its work, and that
-`landing who` and `landing comms` reach those participants. The detailed
-experience, including indefinitely waiting for a requested reply by default, is
-defined in [Agent communication](comms.md).
+After installation, a chat in the project backgrounds `landing messages
+monitor` with the harness's own backgrounding, as the standing section
+directs. The detailed experience is defined in [Messages](messages.md).
 
 ## Success standard
 

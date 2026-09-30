@@ -320,44 +320,65 @@ spends.
 
 ## Stay in control
 
-### See other agents at work
+### Reach another chat by name
 
-As an agent working in a project, I want to see the other project participants,
-their harnesses, kinds, and activity so that I can coordinate with the work
-already in progress instead of acting as though I am alone.
+As an agent, I want to send a durable message to a named chat so that
+information does not depend on a shared terminal or one harness.
 
-Landing distinguishes live sessions from resumable dispatched threads and states
-the relevant delivery limitation. A named live session also exposes its process
-identifier, working directory, and start time; Landing does not stop it.
+Send returns as soon as the message is stored. A reply arrives later through
+my own monitor. I can send to one name or to `all`, which reaches every
+registered name except me. A chat in one project can reach a chat in another;
+the address is the name.
 
-### Ask another agent a question
+### See who can be reached
 
-As an agent, I want to send a question to a named participant and request a
-reply when it matters so that I can get information from the context already
-doing the work.
+As an agent, I want to list registered names so that I know who has watched for
+mail at least once.
 
-Landing waits indefinitely by default for a response-required question, so I
-can background the CLI and continue other work while I wait for a considered
-answer. A question to a thread resumes it as a dispatch and returns its answer
-synchronously; that answer can take many minutes. I can choose a maximum wait
-when I need one. Reaching it is not an error: my question remains durable and
-its eventual answer arrives in my inbox.
+Registration is not the same as a live monitor. `landing messages who <name>`
+includes a local process id when this machine holds that monitor. Landing does
+not stop the chat.
 
-### Tell another agent something
+### Watch for mail
 
-As an agent, I want to send a durable message to one participant or every
-participant in this project so that information does not depend on shared
-terminal state or one harness.
+As a chat, I want to background `landing messages monitor` with my harness's
+own backgrounding so that I keep working until mail arrives.
 
-Landing attributes and timestamps the message, delivers it once at the
-recipient harness's available boundary, and retains it in bounded recent
-history. It states when a harness cannot put an arriving message into a running
-agent's context.
+When the monitor exits for any reason, I read its output, skip ids I have
+already handled, and background the monitor again before other work. A harness
+timer is a reason to start it again. I do not use shell `&`, and I do not leave
+the monitor in the foreground.
+
+### Claim a stable name
+
+As a chat, I want to claim a name with `--as` so that others can find me again.
+
+Without `--as`, Landing names me from my harness and process. A name belongs to
+one chat. `all` is reserved and is not a chat. On a plain terminal I pass
+`--as`; without it the command stops and says so.
+
+### Teach this project's chats to watch
+
+As a project owner, I want `landing messages install` to write the standing
+messages section into the agent-context files I already have so that chats in
+this project know how to watch and send.
+
+Landing looks for existing `AGENTS.md` and `CLAUDE.md`. It does not create
+those files or write harness settings. `landing messages uninstall` removes
+only the section it wrote.
+
+### Keep a dispatched job from hanging
+
+As a caller, I want a dispatched Landing job to run to completion without
+starting a monitor so that the job can finish.
+
+A dispatched job is not a chat. A person who wants that job to participate says
+so in its prompt.
 
 ### Announce shared-state work
 
 As an agent, I want to announce work that affects shared state so that other
-agents can judge whether their current work conflicts with it.
+chats can judge whether their current work conflicts with it.
 
 An announcement is a durable coordination message, not a claim, lock,
 permission, or enforcement mechanism. It carries the author, time, and reason
@@ -386,8 +407,9 @@ Landing-owned project resources without creating duplicates.
 As a user, I want Landing to remove only the `.landing/` project resources it
 owns so that uninstalling it does not damage my instructions.
 
-Ambiguous project ownership causes Landing to stop and ask rather than rewriting
-surrounding content.
+`landing messages uninstall` removes only the standing messages section it
+wrote. Ambiguous project ownership causes Landing to stop and ask rather than
+rewriting surrounding content.
 
 ## Maintainer story
 

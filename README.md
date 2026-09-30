@@ -56,9 +56,9 @@ task + optional persona
 - **Convenes independent perspectives.** Meetings ask several personas the same
   question in clean contexts, then ask an arbiter persona to identify genuine
   conflicts.
-- **Connects agents across harnesses.** Comms provide durable, attributed
-  messages between supported live sessions and resumable dispatched threads in
-  one project.
+- **Lets chats reach one another by name.** A chat watches with
+  `landing messages monitor` and sends with `landing messages send`. Every
+  project on the machine shares the bus; the address is the name.
 
 Landing runs locally as a single Go binary. Project policy and personas live in
 `.landing/` and can travel with the repository; personal authentication does
@@ -191,38 +191,35 @@ Landing returns every position and the arbiter's reading. It does not force
 agreement, decide whether another round is needed, or hide minority concerns.
 The lead agent or user remains responsible for synthesis and the final decision.
 
-## Agent comms
+## Messages
 
-Agents working in the same project can discover one another and exchange
-durable, attributed messages even when they run in different harnesses.
+A live chat can send a durable message to another chat by name, including a
+chat in a different project on the same machine. Other chats cannot see this
+conversation.
 
-Install the supported harness hooks after reviewing the files Landing plans to
-change:
-
-```sh
-landing comms --install
-```
-
-Then inspect participants and send a message:
+Write the standing instructions into existing `AGENTS.md` and `CLAUDE.md`:
 
 ```sh
-landing who
-landing comms --agent <name> --message "I changed the routing boundary; review before editing it."
+landing messages install
 ```
 
-Request a response when the recipient's existing context matters:
+That command does not create those files and does not write harness settings.
+A chat then backgrounds `landing messages monitor` with the harness's own
+backgrounding, reads the output when it exits, skips ids it has already
+handled, and backgrounds the monitor again before other work.
+
+Inspect names and send a message:
 
 ```sh
-landing comms \
-  --agent <name> \
-  --message "Does your current implementation depend on the old schema?" \
-  --require-response
+landing messages who
+landing messages send --to <name> --message "I changed the routing boundary; review before editing it."
 ```
 
-Messages to live sessions arrive at the honest delivery boundaries supported by
-their harness. Messages to resumable Landing threads can wake the thread and
-spend model capacity. Comms coordinate work; they are not locks, permissions,
-or shared memory.
+Send returns as soon as the message is stored. A reply arrives later through
+the sender's own monitor. `--to all` reaches every registered name except the
+sender. A dispatched Landing job is not a chat and does not start a monitor.
+
+Messages coordinate work; they are not locks, permissions, or shared memory.
 
 ## Useful inspection commands
 
@@ -232,9 +229,8 @@ landing harness list
 landing model list
 landing tier list
 landing persona list
-landing who
-landing comms --inbox
-landing comms --history
+landing messages who
+landing messages inbox
 ```
 
 Run `landing --help` for the full command surface and `landing <command> --help`

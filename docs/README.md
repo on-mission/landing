@@ -16,8 +16,8 @@ Product documentation is the primary source of truth. Read it in this order:
    customization model
 5. [Messaging](product/messaging.md) — category, public language, and claims to
    avoid
-6. [Agent communication](product/comms.md) — how agents in one project find one
-   another and coordinate across harnesses
+6. [Messages](product/messages.md) — how chats reach one another by name and
+   exchange durable messages
 
 ## Engineering context
 

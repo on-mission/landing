@@ -245,15 +245,15 @@ Setup makes the project policy discoverable to supported agents so the user's
 agents know Landing exists, which tiers and personas are available, and how
 returned work must be checked.
 
-### Agent communication
+### Messages
 
-Agents in the same project can see active participants and exchange durable,
-attributed messages across supported harnesses. Landing distinguishes a live
-session from a resumable dispatched thread, delivers at each harness's honest
-boundaries, and states delivery latency or limitations rather than implying
-shared live context. Communication coordinates work; it is neither a lock nor
-an authorization mechanism. [Agent communication](comms.md) owns this
-experience.
+A live chat can send a durable message to another chat by name, including a
+chat in a different project on the same machine. The recipient backgrounds a
+monitor, reads mail when that process exits, and starts the monitor again
+before other work. Send returns as soon as the message is stored; a reply
+arrives later through the sender's own monitor. Landing has no harness hooks.
+A dispatched job is not a chat and does not start a monitor. [Messages](messages.md)
+owns this experience.
 
 ### Observable results
 

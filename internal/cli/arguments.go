@@ -47,22 +47,14 @@ type options struct {
 	Instructions     parsedOption
 	Name             parsedOption
 	Description      parsedOption
-	Agent            parsedOption
 	Message          parsedOption
-	MaxWait          parsedOption
+	To               parsedOption
 	As               parsedOption
-	Harness          parsedOption
-	Event            parsedOption
 	Routes           []routeOption
 	JSON             bool
 	Help             bool
 	Version          bool
 	Default          bool
-	RequireReply     bool
-	Inbox            bool
-	History          bool
-	Install          bool
-	Uninstall        bool
 	ForcedPrompt     bool
 	Supplied         []suppliedOption
 }
@@ -87,12 +79,12 @@ func parseArguments(args []string) (options, []string, error) {
 			name, inlineValue, hasInlineValue := strings.Cut(argument[2:], "=")
 			values.Supplied = append(values.Supplied, suppliedOption{Name: name, Written: argument})
 			switch name {
-			case "json", "help", "version", "default", "require-response", "inbox", "history", "install", "uninstall":
+			case "json", "help", "version", "default":
 				if hasInlineValue {
 					return options{}, nil, unknownOption(argument)
 				}
 				setBooleanOption(&values, name)
-			case "tier", "model", "reply", "persona", "arbiter", "cast", "cwd", "label", "timeout", "prompt-file", "instructions-file", "name", "description", "route", "fallback-below", "agent", "message", "max-wait", "as", "harness", "event":
+			case "tier", "model", "reply", "persona", "arbiter", "cast", "cwd", "label", "timeout", "prompt-file", "instructions-file", "name", "description", "route", "fallback-below", "to", "message", "as":
 				value, nextIndex, err := optionValue(args, index, name, inlineValue, hasInlineValue)
 				if err != nil {
 					return options{}, nil, err
@@ -136,16 +128,6 @@ func setBooleanOption(values *options, name string) {
 		values.Version = true
 	case "default":
 		values.Default = true
-	case "require-response":
-		values.RequireReply = true
-	case "inbox":
-		values.Inbox = true
-	case "history":
-		values.History = true
-	case "install":
-		values.Install = true
-	case "uninstall":
-		values.Uninstall = true
 	}
 }
 
@@ -201,18 +183,12 @@ func setOption(values *options, name string, value string) error {
 			return &usageError{message: fmt.Sprintf("--fallback-below has invalid percent %q", value)}
 		}
 		values.Routes[len(values.Routes)-1].FallbackBelowPercent = &percent
-	case "agent":
-		values.Agent = option
+	case "to":
+		values.To = option
 	case "message":
 		values.Message = option
-	case "max-wait":
-		values.MaxWait = option
 	case "as":
 		values.As = option
-	case "harness":
-		values.Harness = option
-	case "event":
-		values.Event = option
 	}
 
 	return nil

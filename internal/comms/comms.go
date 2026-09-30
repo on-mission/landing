@@ -2,11 +2,10 @@
 // messages between them.
 //
 // Two populations share one namespace. A session is a live interactive agent
-// somebody started; nothing can reach it mid-thought, so Landing reaches it at
-// the boundaries its harness exposes. A thread is work Landing dispatched; it
-// is dormant and resumable, so Landing can wake it and get an answer. Every
-// difference in latency between the two follows from that, and Landing reports
-// which kind a participant is rather than papering over it.
+// somebody started. Landing does not push a message into that session; the
+// session reads its inbox by running Landing. A thread is work Landing
+// dispatched. It is dormant and resumable, so Landing can wake it and get an
+// answer. Landing reports which kind a participant is.
 //
 // Messages are durable, attributed, and timestamped. They are delivered once
 // and then become history that ages out. Nothing here is a lock: an agent reads
@@ -27,14 +26,13 @@ const AllAgents = "all"
 type Kind string
 
 const (
-	// KindSession is a live interactive agent, reachable only at the boundaries
-	// its harness exposes.
+	// KindSession is a live interactive agent. It reads its own inbox.
 	KindSession Kind = "session"
 	// KindThread is dispatched work, dormant and resumable on demand.
 	KindThread Kind = "thread"
 )
 
-// State is what a participant was doing when its harness last reported.
+// State is what a participant was doing when its activity was last recorded.
 type State string
 
 const (
@@ -44,7 +42,7 @@ const (
 )
 
 // Activity is the last reported state of a participant. It is only ever as
-// current as the last hook that fired, and callers render it with Since so a
+// current as the last recorded activity, and callers render it with Since so a
 // reader can judge how stale it is.
 type Activity struct {
 	State    State
@@ -98,9 +96,8 @@ func (message Message) Broadcast() bool {
 }
 
 // Store holds one project's participants and messages. Implementations are
-// safe for concurrent use across processes: every hook invocation, every
-// dispatched thread, and every interactive command is a separate process
-// reaching the same state.
+// safe for concurrent use across processes: every dispatched thread and every
+// interactive command is a separate process reaching the same state.
 type Store interface {
 	// Register records a participant, replacing any prior registration under
 	// the same name. Deregister removes one.
@@ -121,8 +118,7 @@ type Store interface {
 	// Rename moves a participant to a new name, carrying its messages with it.
 	Rename(ctx context.Context, from string, to string) error
 
-	// ReportActivity records what a participant is doing. Hooks call this far
-	// more often than anything reads it.
+	// ReportActivity records what a participant is doing.
 	ReportActivity(ctx context.Context, name string, activity Activity) error
 
 	// Participants returns everyone in the project. A session whose process is

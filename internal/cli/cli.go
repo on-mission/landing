@@ -55,9 +55,7 @@ USAGE
   landing --model <target> "<prompt>"
   landing --reply <id> "<prompt>"
   landing meeting --arbiter <persona>[=<target>] [--persona <persona>]... [--cast <persona>=<target>]... "<question>"
-  landing comms [--inbox | --history | --agent <name> --message <text>]
-  landing comms --install | --uninstall
-  landing who [<name> | --as <name>]
+  landing messages send | monitor | who | inbox | install | uninstall
   landing config init | show
   landing tier list | add | update | remove
   landing harness list
@@ -84,15 +82,9 @@ OPTIONS
   --fallback-below <percent>    Reserve the preceding tier route.
   --description <text>          Tier or persona description.
   --name <name>                 Tier or persona name for add, update, remove, or show.
-  --agent <name>                Comms recipient; all addresses every participant.
-  --message <text>              Comms message body.
-  --inbox                       Read undelivered comms messages for this caller.
-  --history                     Read recent comms traffic in this project.
-  --require-response            Wait for a response to a comms message.
-  --max-wait <duration>         Maximum comms response wait; no limit by default.
-  --as <name>                   Act as a named participant.
-  --install                     Write comms hooks into harness project configuration.
-  --uninstall                   Remove comms hooks from harness project configuration.
+  --to <name>                   Message recipient.
+  --message <text>              Message body.
+  --as <name>                   Name for this chat.
   --default                     Mark an added or updated tier as default.
   --json                        JSON output for commands that report data.
   --help, -h                    Help.
@@ -135,44 +127,26 @@ OPTIONS
   --help, -h                    Help.
 `
 
-const commsHelp = `landing comms — exchange messages with agents in this project.
+const messagesHelp = `landing messages — send a message, or watch for one.
 
 USAGE
-  landing comms [--inbox | --history | --agent <name> --message <text>]
-  landing comms --install | --uninstall
-  landing comms hook --harness <name> --event <name>
+  landing messages send --to <name> --message <text> [--as <name>]
+  landing messages monitor [--as <name>]
+  landing messages who [<name>]
+  landing messages inbox [--as <name>]
+  landing messages install
+  landing messages uninstall
 
-With no action, comms reads undelivered messages for the calling participant.
---history reads recent traffic without requiring a registered caller. --agent sends
-a message, and --reply responds to a message that requested a response.
-
-OPTIONS
-  --inbox                       Read undelivered messages for the calling participant.
-  --history                     Read recent comms traffic in this project.
-  --agent <name>                Recipient; all addresses every participant.
-  --reply <id>                  Respond to a message that requested a response.
-  --message <text>              Message body for --agent or --reply.
-  --require-response            Wait for a response to an --agent message.
-  --max-wait <duration>         Maximum response wait; no limit by default.
-  --install                     Write comms hooks into harness project configuration.
-  --uninstall                   Remove comms hooks from harness project configuration.
-  --harness <name>              Harness for a comms hook.
-  --event <name>                Event for a comms hook.
-  --json                        JSON output for inboxes and history.
-  --help, -h                    Help.
-`
-
-const whoHelp = `landing who — list the project’s registered agents.
-
-USAGE
-  landing who [<name> | --as <name>]
-
-With a name, who reports that participant’s process and working directory.
---as renames the calling participant.
+send writes one message and returns. monitor prints unacknowledged messages
+and exits. inbox prints what is waiting and leaves it there. who lists
+registered names. install and uninstall edit an existing AGENTS.md or CLAUDE.md
+at the project root.
 
 OPTIONS
-  --as <name>                   Rename the calling participant.
-  --json                        JSON output for participant reports.
+  --to <name>                   Recipient. all is forwarded unchanged.
+  --message <text>              Message body.
+  --as <name>                   Name for this chat.
+  --json                        JSON output for send and monitor.
   --help, -h                    Help.
 `
 
@@ -398,11 +372,8 @@ func Run(ctx context.Context, inputs Inputs) (int, error) {
 	if values.Help {
 		return writeHelp(ctx, invocationDir, registry, inputs.Stdout)
 	}
-	if commsCommand(positionals, values.ForcedPrompt) {
-		return runComms(ctx, values, positionals[1:], invocationDir, inputs.Stdin, inputs.Stdout)
-	}
-	if whoCommand(positionals, values.ForcedPrompt) {
-		return runWho(ctx, values, positionals[1:], invocationDir, inputs.Stdout)
+	if messagesCommand(positionals, values.ForcedPrompt) {
+		return runMessages(ctx, values, positionals[1:], invocationDir, inputs.Stdout)
 	}
 
 	if command, ok := managementCommand(positionals, values.ForcedPrompt); ok {
@@ -429,11 +400,8 @@ func helpForCommand(positionals []string, forcedPrompt bool) (string, bool) {
 	if meetingCommand(positionals, forcedPrompt) {
 		return meetingHelp, true
 	}
-	if commsCommand(positionals, forcedPrompt) {
-		return commsHelp, true
-	}
-	if whoCommand(positionals, forcedPrompt) {
-		return whoHelp, true
+	if messagesCommand(positionals, forcedPrompt) {
+		return messagesHelp, true
 	}
 	if command, ok := managementCommand(positionals, forcedPrompt); ok {
 		return managementHelp(command), true
@@ -496,12 +464,8 @@ func managementCommandOptions(values options, command command) error {
 	}
 }
 
-func commsCommand(positionals []string, forcedPrompt bool) bool {
-	return !forcedPrompt && len(positionals) > 0 && positionals[0] == "comms"
-}
-
-func whoCommand(positionals []string, forcedPrompt bool) bool {
-	return !forcedPrompt && len(positionals) > 0 && positionals[0] == "who"
+func messagesCommand(positionals []string, forcedPrompt bool) bool {
+	return !forcedPrompt && len(positionals) > 0 && positionals[0] == "messages"
 }
 
 func ReportError(stderr io.Writer, err error) int {

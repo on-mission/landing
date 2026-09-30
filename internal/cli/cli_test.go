@@ -72,12 +72,12 @@ func TestManagementCommand(t *testing.T) {
 }
 
 func TestParseArgumentsTerminatesFlagsAndAttachesFallback(t *testing.T) {
-	values, positionals, err := parseArguments([]string{"tier", "add", "--route", "codex/gpt-5.6-terra", "--fallback-below", "20", "--route", "cline", "--max-wait", "2s", "--", "literal", "--tier"})
+	values, positionals, err := parseArguments([]string{"tier", "add", "--route", "codex/gpt-5.6-terra", "--fallback-below", "20", "--route", "cline", "--label", "kept", "--", "literal", "--tier"})
 	if err != nil {
 		t.Fatalf("parseArguments() returned unexpected error: %v", err)
 	}
-	if !values.ForcedPrompt || !values.MaxWait.Set || values.MaxWait.Value != "2s" || len(values.Routes) != 2 || values.Routes[0].FallbackBelowPercent == nil || *values.Routes[0].FallbackBelowPercent != 20 || values.Routes[1].Model != nil {
-		t.Fatalf("parseArguments() routes = %#v, max wait = %#v, forced = %t; want two routes with fallback attached to codex", values.Routes, values.MaxWait, values.ForcedPrompt)
+	if !values.ForcedPrompt || !values.Label.Set || values.Label.Value != "kept" || len(values.Routes) != 2 || values.Routes[0].FallbackBelowPercent == nil || *values.Routes[0].FallbackBelowPercent != 20 || values.Routes[1].Model != nil {
+		t.Fatalf("parseArguments() routes = %#v, label = %#v, forced = %t; want two routes with fallback attached to codex", values.Routes, values.Label, values.ForcedPrompt)
 	}
 	if got := strings.Join(positionals, " "); got != "tier add literal --tier" {
 		t.Fatalf("parseArguments() positionals = %q, want %q", got, "tier add literal --tier")
@@ -337,10 +337,10 @@ func TestSubcommandHelpIsSpecificToTheCommand(t *testing.T) {
 		args []string
 		want string
 	}{
-		"config init":   {args: []string{"config", "init", "--help"}, want: "landing config init — create a project configuration"},
-		"tier add":      {args: []string{"tier", "add", "--help"}, want: "landing tier add — add a configured execution tier"},
-		"persona add":   {args: []string{"persona", "add", "--help"}, want: "--instructions-file <path>"},
-		"comms install": {args: []string{"comms", "--install", "--help"}, want: "landing comms — exchange messages"},
+		"config init": {args: []string{"config", "init", "--help"}, want: "landing config init — create a project configuration"},
+		"tier add":    {args: []string{"tier", "add", "--help"}, want: "landing tier add — add a configured execution tier"},
+		"persona add": {args: []string{"persona", "add", "--help"}, want: "--instructions-file <path>"},
+		"messages":    {args: []string{"messages", "--help"}, want: "landing messages send --to <name> --message <text>"},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {

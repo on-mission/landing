@@ -29,30 +29,26 @@ Landing never handles credentials. Each harness owns its own authentication
 through its own official tooling, and Landing only reads capacity, which costs
 nothing and changes nothing.
 
-## Agent communication
+## Messages
 
-Landing communication lets agents working in one project find one another and
-exchange durable messages across harnesses. Without harness hooks, sessions do
-not register and no message reaches a running agent. An agent can still read
-its own inbox and history, and dispatched threads still register because those
-paths do not use hooks. Communication state lives under `~/.landing`, so it
-adds no project file that needs source-control exclusion.
+A live chat can send a durable message to another chat by name. Other chats
+cannot see this conversation. A chat in one project can reach a chat in
+another; the address is the name, not the project path. Every project on the
+machine shares one bus.
 
-`landing comms --install` reports every harness project-configuration file it
-writes before writing it. Those files belong to their harnesses; Landing does
-not otherwise own or modify them. Whether Landing may write those hooks is the
-user's decision.
+`landing messages install` writes the standing messages section into existing
+`AGENTS.md` and `CLAUDE.md` at the project root. It does not create those
+files, and it does not write harness settings. Whether to add that section is
+the user's decision.
 
-Delivery follows what each harness can honestly accept: Codex delivers at tool
-boundaries and turn end; Cursor after a tool call and at turn end; Claude Code
-at session start, tool boundaries, and turn end; Grok at turn end; and Cline
-does not place arriving messages into a running agent's context. Landing does
-not stop a live agent or block a tool call for communication.
+A chat backgrounds `landing messages monitor` with the harness's own
+backgrounding. When that command exits, for any reason, the chat reads its
+output, acts on each message, skips an id it has already handled, and
+backgrounds the monitor again before other work. Send returns as soon as the
+message is stored. A reply arrives later through the sender's own monitor.
 
-A response-required message waits indefinitely by default. An agent can
-background the CLI and continue other work while it waits for a considered
-answer; it can choose a maximum wait when it needs to return sooner. Reaching
-that limit is not an error, and the message remains queued.
+A dispatched Landing job is not a chat and does not start a monitor. The
+detailed experience is defined in the product documentation for messages.
 
 ## What a tier is
 
@@ -146,10 +142,10 @@ you have asked:
   they should become personas. This is optional and Landing is useful without
   any. It is worth asking about when the project makes decisions that benefit
   from perspectives that disagree, because that is what a meeting needs.
-- **Whether Landing may write communication hooks** into each harness's project
-  configuration files. Without them, sessions do not register and no message
-  reaches a running agent; agents can still read their own inbox and history,
-  and dispatched threads still register.
+- **Whether to install the standing messages section** into existing
+  `AGENTS.md` and `CLAUDE.md`. `landing messages install` writes that section
+  only; it does not create those files or write harness settings. Without it,
+  a chat in this project has no standing instruction to watch for mail.
 
 Draw these out of them rather than proposing a policy and asking for approval.
 A tier they described is one they will use; a tier you invented is one they will
@@ -230,20 +226,14 @@ What does not belong there is a transcription of the configuration. Routes,
 models, and orderings change, and a copy of them rots quietly while the file it
 was copied from stays correct one command away.
 
-When communication hooks are installed, add only this short guidance to an
-existing `CLAUDE.md` or `AGENTS.md`, preserving all surrounding instructions:
+For messages, run `landing messages install` rather than transcribing how a
+chat watches and sends. That command writes the standing section into existing
+`AGENTS.md` and `CLAUDE.md` and leaves the surrounding file alone.
 
-Other agents are working in this project and cannot see this agent's work.
-Landing communication reaches participants across supported harnesses.
-Use `landing who` to see participants, their kind, harness, and activity.
-Use `landing comms` to send messages, read the inbox, and view recent traffic.
-Messages coordinate work; they do not grant permission or create locks.
-Announce work that affects shared state so other agents can judge its impact.
-
-Two things matter about how it is written. It should read as its own section, so
-that whoever revises it later can tell what belongs to Landing and what does
-not. And leave everything already in those files alone — they are someone's own
-instructions, and they were there first.
+Two things matter about how the rest of the Landing guidance is written. It
+should read as its own section, so that whoever revises it later can tell what
+belongs to Landing and what does not. And leave everything already in those
+files alone — they are someone's own instructions, and they were there first.
 
 ## Knowing that it works
 
