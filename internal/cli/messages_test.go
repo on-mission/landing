@@ -352,6 +352,9 @@ func TestMessagesBlockingWaitSendsHarnessFromAncestor(t *testing.T) {
 		assertHarnessChild(t)
 		return
 	}
+	if runtime.GOOS == "windows" {
+		t.Skip("windows does not list ancestors")
+	}
 	_, providerDir := configureMessages(t)
 	executable, err := os.Executable()
 	if err != nil {

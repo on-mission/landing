@@ -3,13 +3,10 @@ package cli
 import (
 	"context"
 	"os"
-	"os/exec"
-	"strconv"
-	"strings"
 )
 
-// process is one row from the process table. command is the ps command
-// column, which is how a caller recognizes an ancestor executable.
+// process is one row from the process table. command is the executable
+// string a caller uses to recognize an ancestor.
 type process struct {
 	pid     int
 	parent  int
@@ -25,8 +22,7 @@ func stringPointer(value string) *string {
 }
 
 // ancestorProcesses walks from this process's parent toward init. The first
-// entry is the closest ancestor. The walk is the same process table read the
-// comms commands used; messaging uses it to find a harness.
+// entry is the closest ancestor. Messaging uses the walk to find a harness.
 func ancestorProcesses(ctx context.Context) ([]process, error) {
 	entries, err := processes(ctx)
 	if err != nil {
@@ -53,27 +49,4 @@ func ancestorProcesses(ctx context.Context) ([]process, error) {
 	}
 
 	return chain, nil
-}
-
-func processes(ctx context.Context) (map[int]process, error) {
-	command := exec.CommandContext(ctx, "ps", "-axo", "pid=,ppid=,command=")
-	output, err := command.Output()
-	if err != nil {
-		return nil, err
-	}
-	entries := make(map[int]process)
-	for _, line := range strings.Split(string(output), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 3 {
-			continue
-		}
-		pid, pidErr := strconv.Atoi(fields[0])
-		parent, parentErr := strconv.Atoi(fields[1])
-		if pidErr != nil || parentErr != nil {
-			continue
-		}
-		entries[pid] = process{pid: pid, parent: parent, command: strings.Join(fields[2:], " ")}
-	}
-
-	return entries, nil
 }
